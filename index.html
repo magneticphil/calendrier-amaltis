@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Calendrier de culture</title>
+<meta name="theme-color" content="#2f7d4f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Calendrier">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icone-180.png">
+<link rel="icon" type="image/png" href="icone-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+
+<style>
+  :root {
+    --bg:#f4f5f2; --card:#fff; --ink:#1d2420; --mute:#6b736d; --line:#e1e4de;
+    --acc:#2f6b4f; --acc2:#e6f0ea; --warn:#b42318; --veg:#e7f3e9; --flo:#fbefdc; --rac:#e8eefa;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .hidden { display:none !important; }
+  button, input, select, textarea { font:inherit; color:inherit; }
+  button { cursor:pointer; }
+
+  /* Connexion */
+  #login { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .login-box { background:var(--card); border-radius:16px; padding:24px; width:100%; max-width:360px; box-shadow:0 2px 12px rgba(0,0,0,.06); }
+  .login-box h1 { font-size:20px; margin:0 0 4px; }
+  .login-box p { margin:0 0 18px; color:var(--mute); }
+
+  /* En-tête */
+  header { position:sticky; top:0; z-index:5; background:var(--bg); padding:calc(env(safe-area-inset-top) + 10px) 16px 6px; }
+  .top { display:flex; align-items:center; gap:8px; }
+  .top h1 { font-size:18px; margin:0; flex:1; }
+  .who { color:var(--mute); font-size:13px; }
+  .icon-btn { border:0; background:transparent; font-size:18px; padding:6px 8px; border-radius:8px; }
+  .chips { display:flex; gap:6px; overflow-x:auto; padding:8px 0 4px; scrollbar-width:none; }
+  .chips::-webkit-scrollbar { display:none; }
+  .chip { flex:0 0 auto; border:1px solid var(--line); background:var(--card); border-radius:999px; padding:5px 12px; font-size:14px; }
+  .chip.on { background:var(--acc); border-color:var(--acc); color:#fff; }
+
+  main { padding:4px 16px calc(env(safe-area-inset-bottom) + 96px); max-width:720px; margin:0 auto; }
+
+  /* Mois */
+  .mnav { display:flex; align-items:center; justify-content:space-between; margin:6px 0 8px; }
+  .mnav b { font-size:17px; text-transform:capitalize; }
+  .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+  .dow { text-align:center; font-size:11px; color:var(--mute); padding-bottom:2px; text-transform:uppercase; }
+  .day { background:var(--card); border:1px solid transparent; border-radius:8px; min-height:52px; padding:3px 4px; display:flex; flex-direction:column; align-items:flex-start; }
+  .day.out { opacity:.35; }
+  .day.veg { background:var(--veg); }
+  .day.flo { background:var(--flo); }
+  .day.rac { background:var(--rac); }
+  .day.today .n { background:var(--acc); color:#fff; border-radius:999px; padding:0 6px; }
+  .day.sel { border-color:var(--ink); }
+  .day .n { font-size:13px; font-weight:600; }
+  .dots { display:flex; flex-wrap:wrap; gap:2px; margin-top:auto; }
+  .dot { width:7px; height:7px; border-radius:50%; }
+  .dot.done { opacity:.3; }
+  .more { font-size:10px; color:var(--mute); line-height:7px; }
+  .legend { display:flex; gap:12px; font-size:12px; color:var(--mute); margin:6px 0 0; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:3px; vertical-align:-1px; margin-right:4px; }
+
+  h2 { font-size:16px; margin:18px 0 8px; }
+  h2 small { color:var(--mute); font-weight:400; }
+  .sec-warn { color:var(--warn); }
+
+  /* Cartes tâches */
+  .card { background:var(--card); border-radius:12px; display:flex; overflow:hidden; margin-bottom:8px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .card .bar { width:5px; flex:0 0 5px; }
+  .card .body { padding:10px 12px; flex:1; min-width:0; }
+  .row1 { display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:12px; color:var(--mute); }
+  .badge { font-weight:600; }
+  .ttl { font-weight:700; font-size:16px; line-height:1.3; }
+  .row1 { margin-top:3px; }
+  .det { color:var(--ink); font-size:14px; white-space:pre-wrap; margin-top:2px; }
+  .meta { font-size:12px; color:var(--mute); margin-top:4px; }
+  .acts { display:flex; gap:6px; margin-top:8px; }
+  .btn { border:1px solid var(--line); background:var(--card); border-radius:8px; padding:6px 10px; font-size:14px; }
+  .btn.pri { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .btn.ok { background:var(--acc2); border-color:var(--acc2); color:var(--acc); font-weight:600; }
+  .btn.dan { color:var(--warn); }
+  .btn.full { width:100%; padding:12px; font-size:16px; }
+  .card.fait .ttl { text-decoration:line-through; color:var(--mute); }
+  .card.annulée { opacity:.55; }
+  .late { color:var(--warn); font-weight:600; }
+  .vis { color:#7c3aed; font-weight:600; }
+  .acc-row { background:var(--card); border-radius:12px; padding:10px 12px; margin-bottom:8px; }
+  .acc-type { display:inline-block; color:#fff; font-weight:700; font-size:14px; border-radius:999px; padding:3px 12px; margin-bottom:8px; }
+  .empty { color:var(--mute); padding:8px 0 4px; font-size:14px; }
+
+  /* Cycles */
+  .cy { background:var(--card); border-radius:12px; padding:12px; margin-bottom:10px; }
+  .cy-h { display:flex; align-items:baseline; gap:8px; }
+  .cy-h b { font-size:16px; }
+  .cy-h span { color:var(--mute); font-size:13px; flex:1; }
+  .track { position:relative; height:12px; border-radius:6px; background:var(--line); margin:10px 0 6px; overflow:hidden; }
+  .track .v { position:absolute; top:0; bottom:0; background:#8cc59b; }
+  .track .f { position:absolute; top:0; bottom:0; background:#f0b860; }
+  .track .t { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--ink); }
+  .cy-d { display:flex; justify-content:space-between; font-size:12px; color:var(--mute); }
+  .sync { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:13px; color:var(--mute); margin:6px 0 10px; }
+  .cy-past { font-size:13px; color:var(--mute); margin-top:8px; border-top:1px solid var(--line); padding-top:6px; }
+
+  /* Barre d'onglets + bouton d'ajout */
+  .tabs { position:fixed; left:0; right:0; bottom:0; z-index:6; display:flex; background:rgba(255,255,255,.96); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
+  .tabs button { flex:1; border:0; background:transparent; padding:10px 0 12px; font-size:13px; color:var(--mute); }
+  .tabs button.on { color:var(--acc); font-weight:600; }
+  .fab { position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom) + 66px); z-index:7; width:56px; height:56px; border-radius:50%; border:0; background:var(--acc); color:#fff; font-size:30px; line-height:56px; box-shadow:0 4px 12px rgba(0,0,0,.2); }
+
+  /* Panneau modal */
+  .overlay { position:fixed; inset:0; z-index:10; background:rgba(0,0,0,.35); display:flex; align-items:flex-end; justify-content:center; }
+  .panel { background:var(--bg); width:100%; max-width:560px; max-height:92vh; overflow-y:auto; border-radius:16px 16px 0 0; padding:16px 16px calc(env(safe-area-inset-bottom) + 16px); }
+  .panel h3 { margin:0 0 12px; font-size:18px; display:flex; justify-content:space-between; align-items:center; }
+  label { display:block; font-size:13px; color:var(--mute); margin:12px 0 4px; }
+  input[type=text], input[type=date], input[type=number], input[type=password], select, textarea {
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); font-size:16px; }
+  textarea { min-height:70px; resize:vertical; }
+  .pills { display:flex; flex-wrap:wrap; gap:6px; }
+  .pills label { margin:0; }
+  .pills input { display:none; }
+  .pills span { display:inline-block; border:1px solid var(--line); background:var(--card); border-radius:999px; padding:6px 12px; font-size:14px; color:var(--ink); }
+  .pills input:checked + span { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .inline { display:flex; gap:8px; align-items:center; }
+  .inline input { width:80px; }
+  .check { display:flex; align-items:center; gap:8px; color:var(--ink); font-size:15px; }
+  .check input { width:20px; height:20px; }
+  .err { color:var(--warn); font-size:14px; margin-top:10px; min-height:1em; }
+  .foot { display:flex; gap:8px; margin-top:16px; }
+  .foot .btn { flex:1; padding:12px; font-size:16px; }
+  .linkdan { display:block; margin:16px auto 0; border:0; background:transparent; color:var(--warn); font-size:14px; }
+
+  #toast { position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom) + 130px); transform:translateX(-50%); background:var(--ink); color:#fff; padding:8px 14px; border-radius:10px; font-size:14px; z-index:20; opacity:0; transition:opacity .2s; pointer-events:none; }
+  #toast.show { opacity:.92; }
+  #busy { position:fixed; top:0; left:0; height:3px; background:var(--acc); z-index:30; width:0; transition:width .4s; }
+</style>
+</head>
+<body>
+<div id="busy"></div>
+
+<!-- Connexion -->
+<div id="login">
+  <div class="login-box">
+    <h1>Calendrier de culture</h1>
+    <p>Amaltis — identifiez-vous</p>
+    <label>Nom</label>
+    <select id="l-nom"><option>Chargement…</option></select>
+    <label>Code</label>
+    <input id="l-code" type="password" inputmode="numeric" autocomplete="off">
+    <div class="err" id="l-err"></div>
+    <button class="btn pri full" id="l-go">Se connecter</button>
+  </div>
+</div>
+
+<!-- Application -->
+<div id="app" class="hidden">
+  <header>
+    <div class="top">
+      <h1>Calendrier</h1>
+      <span class="who" id="who"></span>
+      <button class="icon-btn" id="refresh" title="Actualiser">↻</button>
+      <button class="icon-btn" id="logout" title="Déconnexion">⎋</button>
+    </div>
+    <div class="chips" id="filtre"></div>
+    <div id="action-feedback" role="status" aria-live="polite" class="meta" style="padding:0 16px 8px" hidden></div>
+  </header>
+  <main>
+    <section id="v-cal"></section>
+    <section id="v-liste" class="hidden"></section>
+    <section id="v-cycles" class="hidden"></section>
+    <section id="v-acces" class="hidden"></section>
+  </main>
+  <button class="fab" id="fab" aria-label="Ajouter">+</button>
+  <nav class="tabs">
+    <button data-v="cal" class="on">Calendrier</button>
+    <button data-v="liste">À venir</button>
+    <button data-v="cycles">Cycles</button>
+    <button data-v="acces" id="tab-acces" class="hidden">Accès</button>
+  </nav>
+</div>
+
+<div id="ov" class="overlay hidden"><div class="panel" id="panel"></div></div>
+<div id="toast"></div>
+
+<script>
+const COUL = {
+  'Amendement':'#8a5a2b', 'Top-dress':'#c08a3e', 'Thé / inoculant':'#2e8b57', 'Foliaire':'#0d9488', 'Transplantation':'#3b6fb6',
+  'Bascule 12/12':'#d97706', 'Deleaf':'#6b8e23', 'Filet':'#4338ca', 'Défoliation':'#6b8e23', 'Récolte':'#b91c1c', 'Post-prod':'#9a3412', 'Échantillon sol':'#7c3aed', 'Leaf test':'#a16207',
+  'Bouturage':'#db2777', 'Lutte intégrée':'#0e7490', 'Entretien':'#64748b', 'Autre':'#475569'
+};
+const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+const JOURS = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
+const S = { auth:null, d:null, salle:'Toutes', vue:'cal', mois:null, jour:null };
+
+/* ---------- Utilitaires ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function store(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2200); }
+let busyN = 0, mutationPending = false, dataRevision = 0, refreshPending = false;
+const MUTATIONS = new Set(['enregistrerTache','changerStatut','retablirTache','enregistrerCycle','annulerCycle','enregistrerAcces','synchroniser']);
+function busy(on) { busyN = Math.max(0,busyN+(on?1:-1)); $('busy').style.width = busyN > 0 ? '70%' : '0'; }
+function actionFeedback(message, ms) {
+  const box=$('action-feedback'); box.textContent=message; box.hidden=!message;
+  clearTimeout(box._h); if (message && ms) box._h = setTimeout(() => actionFeedback(''), ms);
+  if(!message){ const h=$('panel-feedback'); if(h) h.remove(); return; }
+  if(!$('ov').classList.contains('hidden')){
+    let hint=$('panel-feedback'); if(!hint){hint=document.createElement('p');hint.id='panel-feedback';hint.className='meta';hint.setAttribute('role','status');$('panel').prepend(hint);} hint.textContent=message;
+  }
+}
+function setMutationPending(on) {
+  mutationPending=on;
+  document.querySelectorAll('[data-a],#f-ok,#a-ok,#c-ok,#acc-ok').forEach(b=>b.disabled=on);
+  $('panel').setAttribute('aria-busy',String(on));
+}
+function run(fn, ...args) {
+  const mutation=MUTATIONS.has(fn);
+  if(mutation&&mutationPending) return Promise.reject(new Error('Un enregistrement est déjà en cours.'));
+  if(mutation){dataRevision++;setMutationPending(true);actionFeedback('Enregistrement en cours… pas encore confirmé');}
+  if(['enregistrerTache','changerStatut','retablirTache'].includes(fn)) args.push(true);
+  busy(true);
+  return appelServeur(fn, args).then(
+    r => { busy(false); if(mutation){setMutationPending(false);actionFeedback('Enregistré', 2000);} return r; },
+    e => { busy(false);
+      if(mutation){ setMutationPending(false);
+        // Refus du serveur (motif connu) : le formulaire affiche le motif ; panne réseau ou délai : on ne sait pas si c'est enregistré
+        actionFeedback(estPanne(e) ? 'Confirmation non reçue. Actualisez avant de réessayer pour vérifier la saisie.' : '', 0); }
+      throw e; });
+}
+/* Dans Apps Script : google.script.run. Hébergée ailleurs (GitHub Pages) : la porte d'entrée doPost du même script. */
+const API_URL = 'https://script.google.com/macros/s/AKfycbz0xtED1W14j-I_OCOEPRUJkH2mqowsWyDpuRV74LT1zdsRox8Ul2ZXLvKm5szoqnpp/exec';
+function appelServeur(fn, args) {
+  if (window.google && google.script && google.script.run)
+    return new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko)[fn](...args));
+  return fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }), redirect: 'follow' })
+    .then(r => { if (!r.ok) throw new Error('Erreur réseau (' + r.status + ')'); return r.json(); })
+    .then(j => { if (!j.ok) throw new Error(j.error); return j.data; });
+}
+function estPanne(e) {
+  const m = e && e.message ? e.message : String(e || '');
+  return !m || /network|réseau|timeout|délai|NetworkError|failed to fetch|load failed|erreur réseau|unavailable|indisponible|exceeded|dépassé|internal error|erreur interne|Une erreur s'est produite/i.test(m);
+}
+function errMsg(e) { return (e && e.message ? e.message : String(e)).replace(/^Error:\s*/, ''); }
+
+/* Dates en texte AAAA-MM-JJ, calculs en UTC */
+const toD = s => { const p = s.split('-').map(Number); return new Date(Date.UTC(p[0], p[1]-1, p[2])); };
+const toS = d => d.toISOString().slice(0, 10);
+const addD = (s, n) => { const d = toD(s); d.setUTCDate(d.getUTCDate() + n); return toS(d); };
+const diffD = (a, b) => Math.round((toD(b) - toD(a)) / 864e5);
+const wd = s => (toD(s).getUTCDay() + 6) % 7;
+const longDate = s => { const d = toD(s); return JOURS[wd(s)] + ' ' + d.getUTCDate() + ' ' + MOIS[d.getUTCMonth()]; };
+const MCOURT = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+const shortDate = s => { const d = toD(s); return d.getUTCDate() + ' ' + MCOURT[d.getUTCMonth()] + (s.slice(0,4) !== S.d.today.slice(0,4) ? ' ' + s.slice(0,4) : ''); };
+
+/* ---------- Cycles et phases ---------- */
+let cycleIndex=null;
+function cycleAt(salle,date){
+  if(!cycleIndex){cycleIndex={}; S.d.cycles.filter(c=>c.statut!=='annulé').forEach(c=>(cycleIndex[c.salle]||(cycleIndex[c.salle]=[])).push(c));Object.values(cycleIndex).forEach(cs=>cs.sort((a,b)=>b.debut.localeCompare(a.debut)));}
+  return (cycleIndex[salle]||[]).find(c=>c.debut<=date&&(!c.fin||date<=c.fin))||null;
+}
+function phase(salle, date) {
+  const c = cycleAt(salle, date);
+  if (!c) return null;
+  if (c.source === 'lot') return { k:'veg', txt:'4 po J' + (diffD(c.pots || c.debut, date) + 1) + ' · ' + c.onglet };
+  if (c.floraison && date >= c.floraison) { const j = diffD(c.floraison, date) + 1; return { k:'flo', txt:'Flo J' + j + ' · S' + Math.ceil(j / 7) }; }
+  return { k:'veg', txt:'Végé J' + (diffD(c.debut, date) + 1) };
+}
+
+/* ---------- Données ---------- */
+function visibles() {
+  return S.d.taches.filter(t => t.statut !== 'annulée' && (S.salle === 'Toutes' || t.salle === S.salle));
+}
+async function rafraichirDepart() {
+  for (let i = 0; i < 6; i++) {
+    if (await refresh(true)) return;
+    await new Promise(r => setTimeout(r, 1500));
+  }
+}
+async function refresh(quiet) {
+  if(mutationPending||refreshPending||!$('ov').classList.contains('hidden')) return false;
+  refreshPending=true; const revision=dataRevision, auth=S.auth;
+  try { const d=await run('charger',auth); if(revision===dataRevision&&auth===S.auth&&!mutationPending&&$('ov').classList.contains('hidden')){apply(d);if(!quiet)toast('À jour');return true;} return false; }
+  catch(e){if(/code invalide/i.test(errMsg(e))){logout();return true;} if(revision===dataRevision&&!quiet)toast(errMsg(e)); return false;}
+  finally{refreshPending=false;}
+}
+const CACHE_V = 1;
+function cacheKey() { return 'cal_data_' + (S.auth && S.auth.nom ? String(S.auth.nom).toLowerCase() : ''); }
+let cacheT = null;
+function saveCache() { clearTimeout(cacheT); cacheT = setTimeout(() => { if (S.d && S.auth) store(cacheKey(), { v: CACHE_V, d: S.d }); }, 300); }
+function readCache() { const c = load(cacheKey()); return c && c.v === CACHE_V && c.d && c.d.taches ? c.d : null; }
+function apply(d) {
+  const oldToday = S.d && S.d.today;
+  if(d.delta){
+    const removed=new Set(d.removed||[]), changed=new Map(d.taches.map(t=>[t.id,t]));
+    S.d.taches=S.d.taches.filter(t=>!removed.has(t.id)).map(t=>{const n=changed.get(t.id);changed.delete(t.id);return n||t;});
+    changed.forEach(t=>S.d.taches.push(t)); S.d.today=d.today;
+  } else {
+    // Rechargement complet : on garde l'historique plus ancien déjà chargé à la demande
+    const anciens = S.d && S.d.taches && d.depuis ? S.d.taches.filter(t => t.date < d.depuis) : [];
+    const ids = new Set(d.taches.map(t => t.id));
+    anciens.forEach(t => { if (!ids.has(t.id)) d.taches.push(t); });
+    d.charges = (S.d && S.d.charges) || {};
+    S.d = d;
+  }
+  // Nouvelle journée depuis l'ouverture (données en cache) : la sélection suit « aujourd'hui »
+  if (oldToday && S.d.today !== oldToday && S.jour === oldToday) { S.jour = S.d.today; S.mois = S.d.today.slice(0, 7); }
+  cycleIndex=null; saveCache(); render();
+}
+
+/* ---------- Connexion ---------- */
+async function initLogin() {
+  const saved = load('cal_auth');
+  if (saved) {
+    S.auth = saved;
+    // Ouverture instantanée : dernières données connues affichées tout de suite, puis mise à jour en arrière-plan
+    const cache = readCache();
+    if (cache) { start({ nom: cache.moi }, cache); rafraichirDepart(); return; }
+    try { const d = await run('charger', saved); return start({nom:d.moi},d); } catch (e) { store('cal_auth', null); }
+  }
+  try {
+    const noms = await run('listerNoms');
+    $('l-nom').innerHTML = noms.map(n => '<option>' + esc(n) + '</option>').join('');
+    const last = load('cal_dernier_nom'); if (last && noms.includes(last)) $('l-nom').value = last;
+  } catch (e) { $('l-err').textContent = errMsg(e); }
+}
+$('l-go').onclick = async () => {
+  if($('l-go').disabled)return; $('l-go').disabled=true;
+  const a = { nom: $('l-nom').value, code: $('l-code').value.trim() };
+  $('l-err').textContent = '';
+  try { const d = await run('charger', a); S.auth = a; store('cal_auth', a); store('cal_dernier_nom', a.nom); start({nom:d.moi},d); }
+  catch (e) { $('l-err').textContent = errMsg(e); }
+  finally { $('l-go').disabled=false; }
+};
+$('l-code').addEventListener('keydown', e => { if (e.key === 'Enter') $('l-go').click(); });
+async function start(u, initial) {
+  $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+  $('who').textContent = u.nom;
+  S.d = initial || await run('charger', S.auth);
+  S.mois = S.d.today.slice(0, 7); S.jour = S.d.today;
+  const sf = load('cal_salle'); if (sf && (sf === 'Toutes' || S.d.salles.includes(sf))) S.salle = sf;
+  saveCache(); render();
+}
+function logout() { store(cacheKey(), null); store('cal_auth', null); location.reload(); }
+$('logout').onclick = () => { if (confirm('Se déconnecter ?')) logout(); };
+$('refresh').onclick = () => refresh();
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S.d) refresh(true); });
+
+/* ---------- Navigation ---------- */
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  S.vue = b.dataset.v;
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  render(); window.scrollTo(0, 0);
+});
+$('fab').onclick = () => S.vue === 'cycles' ? formCycle(null, S.salle !== 'Toutes' ? S.salle : null) : formTache(null, S.vue === 'cal' ? S.jour : S.d.today);
+
+function render() {
+  $('filtre').innerHTML = ['Toutes'].concat(S.d.salles).map(s =>
+    '<button class="chip' + (s === S.salle ? ' on' : '') + '" data-s="' + esc(s) + '">' + esc(s) + '</button>').join('');
+  $('filtre').querySelectorAll('.chip').forEach(c => c.onclick = () => { S.salle = c.dataset.s; store('cal_salle', S.salle); render(); });
+  $('tab-acces').classList.toggle('hidden', !S.d.admin);
+  if (S.vue === 'acces' && !S.d.admin) S.vue = 'cal';
+  $('fab').classList.toggle('hidden', S.vue === 'acces');
+  $('filtre').classList.toggle('hidden', S.vue === 'acces');
+  ['cal', 'liste', 'cycles', 'acces'].forEach(v => $('v-' + v).classList.toggle('hidden', v !== S.vue));
+  if (S.vue === 'cal') renderCal(); else if (S.vue === 'liste') renderListe(); else if (S.vue === 'acces') renderAcces(); else renderCycles();
+}
+
+/* ---------- Vue mois ---------- */
+/** Mois antérieur à la période chargée : récupère son historique (une seule fois). */
+async function chargerMois(mois) {
+  S.d.charges = S.d.charges || {};
+  if (!S.d.depuis || S.d.charges[mois]) return;
+  const debut = mois + '-01', fin = addD(addD(debut, 32).slice(0, 7) + '-01', -1);
+  if (debut >= S.d.depuis) return;
+  // marges de la grille (semaine précédente / suivante) incluses
+  const d0 = addD(debut, -7), d1 = fin < S.d.depuis ? addD(fin, 7) : addD(S.d.depuis, -1);
+  S.d.charges[mois] = true;
+  try {
+    const r = await run('chargerPeriode', S.auth, d0, d1);
+    const ids = new Set(S.d.taches.map(t => t.id));
+    r.taches.forEach(t => { if (!ids.has(t.id)) S.d.taches.push(t); });
+    saveCache(); if (S.vue === 'cal' && S.mois === mois) renderCal();
+  } catch (e) { delete S.d.charges[mois]; toast(errMsg(e)); }
+}
+function renderCal() {
+  const [y, m] = S.mois.split('-').map(Number);
+  const first = S.mois + '-01';
+  const start = addD(first, -wd(first));
+  if (S.d.depuis && first < S.d.depuis && !(S.d.charges || {})[S.mois]) chargerMois(S.mois);
+  const parJour = {};
+  visibles().forEach(t => (parJour[t.date] = parJour[t.date] || []).push(t));
+  const one = S.salle !== 'Toutes';
+  let h = '<div class="mnav"><button class="icon-btn" id="mprev">‹</button><b>' + MOIS[m-1] + ' ' + y +
+    '</b><button class="icon-btn" id="mnext">›</button></div><div class="grid">' +
+    JOURS.map(j => '<div class="dow">' + j.slice(0, 3) + '</div>').join('');
+  for (let i = 0; i < 42; i++) {
+    const s = addD(start, i);
+    if (i >= 35 && s.slice(0, 7) !== S.mois) break;
+    const ts = parJour[s] || [];
+    const ph = one ? phase(S.salle, s) : null;
+    const cls = ['day', s.slice(0, 7) !== S.mois ? 'out' : '', s === S.d.today ? 'today' : '', s === S.jour ? 'sel' : '', ph ? ph.k : ''].join(' ');
+    const dots = ts.slice(0, 6).map(t => '<span class="dot' + (t.statut === 'fait' ? ' done' : '') + '" style="background:' + (COUL[t.type] || '#999') + '"></span>').join('') +
+      (ts.length > 6 ? '<span class="more">+' + (ts.length - 6) + '</span>' : '');
+    h += '<div class="' + cls + '" data-d="' + s + '"><span class="n">' + toD(s).getUTCDate() + '</span><div class="dots">' + dots + '</div></div>';
+  }
+  h += '</div>';
+  if (one) h += S.d.cycles.some(c => c.salle === S.salle && c.source === 'lot')
+    ? '<div class="legend"><span><i style="background:var(--veg);border:1px solid #cfe3d3"></i>Lot en pots 4 po</span></div>'
+    : '<div class="legend"><span><i style="background:var(--veg);border:1px solid #cfe3d3"></i>Végétation</span><span><i style="background:var(--flo);border:1px solid #f1dcb6"></i>Floraison</span></div>';
+  const dayT = (parJour[S.jour] || []).sort(byType);
+  const phs = (one ? [S.salle] : S.d.salles).map(sl => { const p = phase(sl, S.jour); return p ? (one ? '' : sl.replace('Salle ', 'S') + ' ') + p.txt : null; }).filter(Boolean);
+  h += '<h2>' + cap(longDate(S.jour)) + (phs.length ? ' <small>· ' + esc(phs.join(' · ')) + '</small>' : '') + '</h2>';
+  h += dayT.length ? dayT.map(t => card(t, false)).join('') : '<div class="empty">Aucune tâche.</div>';
+  if (S.d.admin) {
+    const ann = S.d.taches.filter(t => t.statut === 'annulée' && t.creePar !== 'registre' && t.date === S.jour && (S.salle === 'Toutes' || t.salle === S.salle));
+    if (ann.length) h += '<h2 class="sub-ann">Annulées ce jour <small>(' + ann.length + ')</small></h2>' + ann.map(t => card(t, false)).join('');
+  }
+  h += '<button class="btn" id="addday" style="margin-top:4px">+ Ajouter une tâche ce jour</button>';
+  $('v-cal').innerHTML = h;
+  $('mprev').onclick = () => { S.mois = addD(S.mois + '-01', -1).slice(0, 7); renderCal(); };
+  $('mnext').onclick = () => { S.mois = addD(S.mois + '-01', 32).slice(0, 7); renderCal(); };
+  $('v-cal').querySelectorAll('.day').forEach(c => c.onclick = () => { S.jour = c.dataset.d; if (S.jour.slice(0, 7) !== S.mois) S.mois = S.jour.slice(0, 7); renderCal(); });
+  $('addday').onclick = () => formTache(null, S.jour);
+  bindCards($('v-cal'));
+}
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const byType = (a, b) => (a.statut === 'fait') - (b.statut === 'fait') || a.salle.localeCompare(b.salle, 'fr', {numeric:true}) || a.type.localeCompare(b.type);
+const byDate = (a, b) => a.date.localeCompare(b.date) || byType(a, b);
+
+/* ---------- Vue À venir ---------- */
+function renderListe() {
+  const T = S.d.today, all = visibles();
+  const afaire = all.filter(t => t.statut === 'à faire');
+  const groupes = [
+    ['En retard', afaire.filter(t => t.date < T), 'sec-warn'],
+    ["Aujourd'hui", all.filter(t => t.date === T)],
+    ['7 prochains jours', afaire.filter(t => t.date > T && t.date <= addD(T, 7))],
+    ['Jusqu’à 30 jours', afaire.filter(t => t.date > addD(T, 7) && t.date <= addD(T, 30))],
+    ['Faites ces 7 derniers jours', all.filter(t => t.statut === 'fait' && t.date < T && t.date >= addD(T, -7))],
+  ];
+  if (S.d.admin) groupes.push(['Annulées ces 7 derniers jours', S.d.taches.filter(t => t.statut === 'annulée' && t.creePar !== 'registre' &&
+    (S.salle === 'Toutes' || t.salle === S.salle) && String(t.modifLe || '').slice(0, 10) >= addD(T, -7))]);
+  $('v-liste').innerHTML = groupes.map(([titre, ts, cls]) => {
+    if (!ts.length && titre !== "Aujourd'hui") return '';
+    return '<h2 class="' + (cls || '') + '">' + titre + ' <small>(' + ts.length + ')</small></h2>' +
+      (ts.length ? ts.sort(byDate).map(t => card(t, true)).join('') : '<div class="empty">Rien de prévu.</div>');
+  }).join('');
+  bindCards($('v-liste'));
+}
+
+/* ---------- Carte tâche ---------- */
+function card(t, withDate) {
+  const ph = phase(t.salle, t.date);
+  const late = t.statut === 'à faire' && t.date < S.d.today;
+  const trimEnCours = t.regle === 'TRIMF' && t.statut === 'à faire';
+  const reportee = !trimEnCours && t.statut === 'à faire' && t.prevue && t.prevue < t.date;
+  // Trim en cours : jour N (jours de semaine depuis le début du trim)
+  let jourTrim = 0;
+  if (trimEnCours) for (let d = t.prevue || t.date; d <= t.date; d = addD(d, 1)) { const w = toD(d).getUTCDay(); if (w && w < 6) jourTrim++; }
+  const titreCarte = trimEnCours ? 'Trim en cours — jour ' + Math.max(1, jourTrim) : (t.titre || t.type);
+  const meta = t.statut === 'annulée' ? 'Annulée par ' + (t.modifPar || '?') + (t.modifLe ? ' · ' + t.modifLe : '') + (t.motif ? ' · motif : ' + t.motif : '')
+    : t.statut === 'fait' ? (t.faitPar === 'registre' ? 'Fait selon le registre de culture' : 'Fait par ' + t.faitPar + ' · ' + t.faitLe) +
+      (t.prevue ? ' · prévue le ' + shortDate(t.prevue) : '') + (t.registre && t.creePar !== 'registre' ? ' · registre : ' + t.registre.split(' :: ')[1] : '')
+    : (t.creePar === 'auto' ? 'Planifiée automatiquement' : 'Planifié par ' + t.creePar) +
+      (t.modifPar && t.modifPar !== 'auto' ? ' · modifié par ' + t.modifPar : '');
+  return '<div class="card ' + t.statut + '"><div class="bar" style="background:' + (COUL[t.type] || '#999') + '"></div><div class="body">' +
+    '<div class="ttl">' + esc(t.salle) + ' — ' + esc(titreCarte) + '</div>' +
+    '<div class="row1"><span class="badge" style="color:' + (COUL[t.type] || '#999') + '">' + esc(t.type) + '</span>' +
+    (ph ? '<span>' + esc(ph.txt) + '</span>' : '') +
+    (withDate ? '<span class="' + (late ? 'late' : '') + '">' + shortDate(t.date) + (late ? ' · en retard' : '') + '</span>' : '') +
+    (reportee ? '<span class="late">↪ reportée du ' + shortDate(t.prevue) + '</span>' : '') +
+    (t.serie ? '<span>↻ série</span>' : '') + (t.auto ? '<span>⚙ auto</span>' : '') +
+    (t.visible ? '<span class="vis">🔒 ' + esc(t.visible) + '</span>' : '') + '</div>' +
+    (t.details && !t.auto ? '<div class="det">' + esc(t.details) + '</div>' : '') +
+    '<div class="meta">' + esc((t.auto && t.details ? t.details + ' · ' : '') + meta) + '</div>' +
+    (t.statut === 'annulée' ? '<div class="acts">' + (S.d.admin ? '<button class="btn" data-a="restore" data-id="' + t.id + '">↺ Rétablir</button>' : '') + '</div></div></div>' :
+    '<div class="acts">' +
+      (t.statut === 'fait' ? '<button class="btn" data-a="undo" data-id="' + t.id + '">Remettre à faire</button>'
+                           : '<button class="btn ok" data-a="fait" data-id="' + t.id + '">' + (trimEnCours ? '✓ Trim terminé' : '✓ Fait') + '</button>') +
+      '<button class="btn" data-a="edit" data-id="' + t.id + '">Modifier</button>' +
+      '<button class="btn dan" data-a="cancel" data-id="' + t.id + '">Annuler</button>' +
+    '</div></div></div>');
+}
+function bindCards(root) {
+  root.querySelectorAll('[data-a]').forEach(b => b.onclick = async () => {
+    const t = S.d.taches.find(x => x.id === b.dataset.id);
+    if (b.dataset.a === 'edit') return formTache(t);
+    if (b.dataset.a === 'cancel') return formAnnulTache(t);
+    if (b.dataset.a === 'restore') {
+      try { apply(await run('retablirTache', S.auth, t.id)); toast('Tâche rétablie'); } catch (e) { toast(errMsg(e)); }
+      return;
+    }
+    if (mutationPending) return;
+    // Affichage immédiat (même règle que le serveur), puis confirmation ; en cas d'échec, retour à l'état précédent
+    const fait = b.dataset.a === 'fait';
+    const avant = Object.assign({}, t);
+    if (fait) {
+      if (t.date > S.d.today) { t.prevue = t.date; t.date = S.d.today; }
+      Object.assign(t, { statut: 'fait', faitPar: S.d.moi, faitLe: 'en cours…' });
+    } else {
+      if (t.prevue && t.prevue >= S.d.today) { t.date = t.prevue; t.prevue = ''; }
+      Object.assign(t, { statut: 'à faire', faitPar: '', faitLe: '' });
+    }
+    cycleIndex = null; render();
+    try { apply(await run('changerStatut', S.auth, t.id, fait ? 'fait' : 'à faire', '', false));
+          toast(fait ? 'Marquée comme faite' : 'Remise à faire'); }
+    catch (e) {
+      const i = S.d.taches.findIndex(x => x.id === avant.id);
+      if (i >= 0) S.d.taches[i] = avant;
+      cycleIndex = null; render();
+      toast('Non enregistré : ' + errMsg(e));
+    }
+  });
+}
+
+/* ---------- Panneau ---------- */
+function open(html) { if(mutationPending)return; $('panel').innerHTML = html; $('ov').classList.remove('hidden'); $('panel').scrollTop = 0; }
+function close() { if(mutationPending)return; $('ov').classList.add('hidden'); }
+$('ov').onclick = e => { if (e.target === $('ov')) close(); };
+const opts = (list, sel) => list.map(x => '<option' + (x === sel ? ' selected' : '') + '>' + esc(x) + '</option>').join('');
+
+function formTache(t, date) {
+  const edit = !!t;
+  const sal = edit ? t.salle : (S.salle !== 'Toutes' ? S.salle : null);
+  open('<h3>' + (edit ? 'Modifier la tâche' : 'Nouvelle tâche') + '<button class="icon-btn" id="x">✕</button></h3>' +
+    (edit ? '<label>Salle</label><select id="f-salle">' + opts(S.d.salles, t.salle) + '</select>'
+          : '<label>Salle(s)</label><div class="pills">' + S.d.salles.map(s =>
+              '<label><input type="checkbox" name="fs" value="' + esc(s) + '"' + (s === sal ? ' checked' : '') + '><span>' + esc(s) + '</span></label>').join('') + '</div>') +
+    '<label>Date</label><input type="date" id="f-date" value="' + (edit ? t.date : date) + '">' +
+    '<label>Type</label><select id="f-type">' + opts(S.d.types, edit ? t.type : 'Amendement') + '</select>' +
+    '<label>Titre (facultatif)</label><input type="text" id="f-titre" maxlength="120" placeholder="ex. Top-dress Kelp + basalte" value="' + esc(edit ? t.titre : '') + '">' +
+    '<label>Détails / doses</label><textarea id="f-det" maxlength="1000" placeholder="Produits, doses, consignes…">' + esc(edit ? t.details : '') + '</textarea>' +
+    visBloc(edit ? t.visible : '') +
+    (edit ? '' : '<label class="check" style="margin-top:16px"><input type="checkbox" id="f-rep"> Répéter</label>' +
+      '<div id="f-repbox" class="hidden"><div class="inline" style="margin-top:8px">tous les <input type="number" id="f-pas" min="1" max="120" value="7"> jours, <input type="number" id="f-fois" min="2" max="52" value="4"> fois</div></div>') +
+    '<div class="err" id="f-err"></div>' +
+    '<div class="foot"><button class="btn" id="f-no">Fermer</button><button class="btn pri" id="f-ok">Enregistrer</button></div>');
+  $('x').onclick = $('f-no').onclick = close;
+  if (!edit) $('f-rep').onchange = e => $('f-repbox').classList.toggle('hidden', !e.target.checked);
+  visBind();
+  $('f-ok').onclick = async () => {
+    const p = { date: $('f-date').value, type: $('f-type').value, titre: $('f-titre').value, details: $('f-det').value, visible: visLire() };
+    if (edit) { p.id = t.id; p.salle = $('f-salle').value; }
+    else {
+      p.salles = [...document.querySelectorAll('input[name=fs]:checked')].map(i => i.value);
+      if (!p.salles.length) return $('f-err').textContent = 'Choisissez au moins une salle.';
+      if ($('f-rep').checked) { p.tousLes = $('f-pas').value; p.fois = $('f-fois').value; }
+    }
+    if (!p.date) return $('f-err').textContent = 'Indiquez une date.';
+    $('f-ok').disabled = true;
+    try {
+      apply(await run('enregistrerTache', S.auth, p)); close();
+      if (!edit) { S.jour = p.date; S.mois = p.date.slice(0, 7); render(); }
+      toast(edit ? 'Tâche modifiée' : 'Tâche ajoutée');
+    } catch (e) { $('f-err').textContent = errMsg(e); $('f-ok').disabled = false; }
+  };
+}
+
+/* ---------- Accès par type (admin) ---------- */
+function renderAcces() {
+  const emp = (S.d.employes || []).filter(n => n !== S.d.moi);
+  const rows = (S.d.acces || []).map(a => {
+    const vis = String(a.visible || '').split(/,\s*/).filter(Boolean);
+    const coul = COUL[a.type] || '#475569';
+    return '<div class="acc-row" data-type="' + esc(a.type) + '">' +
+      '<span class="acc-type" style="background:' + coul + '">' + esc(a.type) + '</span>' +
+      '<div class="pills">' + emp.map(n => '<label><input type="checkbox" value="' + esc(n) + '"' +
+        (!vis.length || vis.includes(n) ? ' checked' : '') + '><span>' + esc(n) + '</span></label>').join('') + '</div></div>';
+  }).join('');
+  $('v-acces').innerHTML = '<h2>Qui voit quoi</h2><div class="meta" style="margin-bottom:10px">Cochez les employés qui voient chaque type de tâche. ' +
+    'Vous voyez toujours tout ; la personne qui crée une tâche la voit aussi. Pour une tâche précise, utilisez « Visible par » dans la tâche.</div>' +
+    rows + '<button class="btn pri full" id="acc-ok" style="margin-top:12px">Enregistrer</button>';
+  $('acc-ok').onclick = async () => {
+    const lignes = [...$('v-acces').querySelectorAll('.acc-row')].map(r => ({
+      type: r.dataset.type, visible: [...r.querySelectorAll('input:checked')].map(i => i.value) }));
+    if (lignes.some(l => !l.visible.length) && !confirm('Certains types ne seront visibles que par vous. Continuer ?')) return;
+    $('acc-ok').disabled = true;
+    try { apply(await run('enregistrerAcces', S.auth, lignes.map(l => ({ type: l.type, visible: l.visible.length ? l.visible : [S.d.moi] })))); toast('Accès enregistrés'); }
+    catch (e) { toast(errMsg(e)); $('acc-ok').disabled = false; }
+  };
+}
+
+/* ---------- Visible par ---------- */
+function visBloc(cur) {
+  const sel = String(cur || '').split(/,\s*/).filter(Boolean);
+  const autres = (S.d.employes || []).filter(n => n !== S.d.moi);
+  return '<label>Visible par</label><div class="pills" id="f-vis">' +
+    '<label><input type="checkbox" value="*"' + (sel.length ? '' : ' checked') + '><span>Tout le monde</span></label>' +
+    autres.map(n => '<label><input type="checkbox" value="' + esc(n) + '"' + (sel.includes(n) ? ' checked' : '') + '><span>' + esc(n) + '</span></label>').join('') +
+    '</div><div class="meta" id="f-vis-note"></div>';
+}
+function visBind() {
+  const box = $('f-vis'); if (!box) return;
+  const all = box.querySelector('input[value="*"]');
+  const noms = [...box.querySelectorAll('input:not([value="*"])')];
+  const note = () => { $('f-vis-note').textContent = all.checked ? 'Tous les employés voient cette tâche.'
+    : 'Seulement vous' + (noms.some(i => i.checked) ? ', ' + noms.filter(i => i.checked).map(i => i.value).join(', ') : '') + ' et l’admin.'; };
+  all.onchange = () => { if (all.checked) noms.forEach(i => { i.checked = false; }); else if (!noms.some(i => i.checked)) all.checked = true; note(); };
+  noms.forEach(i => i.onchange = () => { all.checked = !noms.some(x => x.checked); note(); });
+  // « Moi seulement » : décocher tout le monde sans cocher personne
+  const moi = document.createElement('label');
+  moi.innerHTML = '<input type="checkbox" value="__moi"><span>Moi seulement</span>';
+  box.insertBefore(moi, box.children[1]);
+  const mi = moi.querySelector('input');
+  const sel0 = !all.checked && !noms.some(i => i.checked);
+  mi.checked = sel0;
+  mi.onchange = () => { if (mi.checked) { all.checked = false; noms.forEach(i => { i.checked = false; }); } else if (!noms.some(i => i.checked)) all.checked = true; note(); };
+  noms.forEach(i => i.addEventListener('change', () => { if (i.checked) mi.checked = false; }));
+  all.addEventListener('change', () => { if (all.checked) mi.checked = false; });
+  note();
+}
+function visLire() {
+  const box = $('f-vis'); if (!box) return [];
+  if (box.querySelector('input[value="*"]').checked) return [];
+  const noms = [...box.querySelectorAll('input:checked')].map(i => i.value).filter(v => v !== '*' && v !== '__moi');
+  return [S.d.moi].concat(noms);
+}
+
+function formAnnulTache(t) {
+  const suite = t.serie ? S.d.taches.filter(x => x.serie === t.serie && x.salle === t.salle && x.id !== t.id && x.date > t.date && x.statut === 'à faire').length : 0;
+  open('<h3>Annuler la tâche<button class="icon-btn" id="x">✕</button></h3>' +
+    '<div>' + esc(t.titre || t.type) + ' — ' + esc(t.salle) + ', ' + longDate(t.date) + '</div>' +
+    '<label>Motif (obligatoire)</label><textarea id="a-motif" maxlength="300" placeholder="ex. reportée, non nécessaire, erreur de saisie"></textarea>' +
+    (suite ? '<label class="check" style="margin-top:12px"><input type="checkbox" id="a-serie"> Annuler aussi les ' + suite + ' suivantes de la série</label>' : '') +
+    '<div class="err" id="a-err"></div>' +
+    '<div class="foot"><button class="btn" id="a-no">Fermer</button><button class="btn pri" style="background:var(--warn);border-color:var(--warn)" id="a-ok">Annuler la tâche</button></div>');
+  $('x').onclick = $('a-no').onclick = close;
+  $('a-ok').onclick = async () => {
+    const m = $('a-motif').value.trim();
+    if (!m) return $('a-err').textContent = 'Indiquez un motif.';
+    $('a-ok').disabled = true;
+    try { apply(await run('changerStatut', S.auth, t.id, 'annulée', m, suite ? $('a-serie').checked : false)); close(); toast('Tâche annulée'); }
+    catch (e) { $('a-err').textContent = errMsg(e); $('a-ok').disabled = false; }
+  };
+}
+
+/* ---------- Vue Cycles ---------- */
+function renderCycles() {
+  const T = S.d.today;
+  const salles = S.salle === 'Toutes' ? S.d.salles : [S.salle];
+  const reg = sl => S.d.cycles.some(c => c.salle === sl && (c.source === 'registre' || c.source === 'lot') && c.statut !== 'annulé');
+  const lots = sl => S.d.cycles.some(c => c.salle === sl && c.source === 'lot' && c.statut !== 'annulé');
+  const nouveau = sl => reg(sl)
+    ? '<div class="meta" style="margin-top:8px">' + (lots(sl) ? 'Lots créés automatiquement d’après les transplants des grandes salles.' : 'Nouveau round : ajoutez l’onglet dans le registre de culture.') + '</div>'
+    : '<div style="margin-top:8px"><button class="btn" data-n="' + esc(sl) + '">+ Nouveau cycle</button></div>';
+  const entete = '<div class="sync"><span>Registres de culture · synchro ' + esc(S.d.synchro || '—') + '</span>' +
+    '<button class="btn" id="sync">Synchroniser</button></div>' +
+    (S.d.rapportSynchro ? '<div class="meta late" style="margin-bottom:8px">' + esc(S.d.rapportSynchro) + '</div>' : '');
+  $('v-cycles').innerHTML = entete + salles.map(sl => {
+    const cs = S.d.cycles.filter(c => c.salle === sl && c.statut !== 'annulé').sort((a, b) => b.debut.localeCompare(a.debut));
+    const cur = (lots(sl) ? cs.slice().reverse().find(c => c.fin >= T) : cs.find(c => !c.fin || c.fin >= T)) || null;
+    const past = cs.filter(c => c !== cur && (!lots(sl) || c.fin < T)).slice(0, 3);
+    const lib = cur ? [cur.source !== 'manuel' ? cur.onglet : '', cur.cultivar].filter(Boolean).join(' · ') : 'Aucun cycle en cours';
+    let h = '<div class="cy"><div class="cy-h"><b>' + esc(sl) + '</b><span>' + esc(lib) + '</span>' +
+      (cur ? '<button class="btn" data-c="' + cur.id + '">' + (cur.source !== 'manuel' ? 'Détails' : 'Modifier') + '</button>'
+           : reg(sl) ? '' : '<button class="btn pri" data-n="' + esc(sl) + '">+ Cycle</button>') + '</div>';
+    if (cur && cur.source === 'lot') {
+      const tot = Math.max(1, diffD(cur.debut, cur.fin));
+      const pct = s => Math.max(0, Math.min(100, diffD(cur.debut, s) / tot * 100));
+      const p4 = cur.pots ? pct(cur.pots) : 0;
+      const ph = cur.debut <= T ? phase(sl, T) : null;
+      h += '<div class="track"><div class="v" style="left:0;width:' + p4 + '%;background:#9db4e3"></div>' +
+        '<div class="f" style="left:' + p4 + '%;right:0;background:#8cc59b"></div>' +
+        (T >= cur.debut && T <= cur.fin ? '<div class="t" style="left:' + pct(T) + '%"></div>' : '') + '</div>' +
+        '<div class="cy-d"><span>Boutures ' + shortDate(cur.boutures || cur.debut) + '</span><span>4 po ' + (cur.pots ? shortDate(cur.pots) : '—') + '</span>' +
+        '<span>Transplant ' + shortDate(cur.fin) + '</span></div>' +
+        '<div style="margin-top:6px;font-size:14px">' + (ph ? '<b>' + esc(ph.txt.split(' · ')[0]) + '</b>' : cur.debut > T ? 'En 4 po dans ' + diffD(T, cur.debut) + ' j' : '') +
+        (cur.fin >= T ? ' · transplant dans ' + diffD(T, cur.fin) + ' j' : '') + '</div>' +
+        (cur.remarque ? '<div class="meta late">' + esc(cur.remarque) + '</div>' : '') +
+        (() => { const suiv = S.d.cycles.filter(c => c.salle === sl && c.source === 'lot' && c.statut !== 'annulé' && c.debut > cur.debut && c.fin >= T).sort((a, b) => a.debut.localeCompare(b.debut));
+          return suiv.length ? '<div class="cy-past">À suivre : ' + suiv.map(c => esc(c.onglet.replace('lot pour ', '')) + ' (4 po ' + shortDate(c.debut) + ' → ' + shortDate(c.fin) + (c.remarque ? ', <span class="late">' + esc(c.remarque) + '</span>' : '') + ')').join(' · ') + '</div>' : ''; })() +
+        nouveau(sl);
+    } else if (cur) {
+      const fin = cur.fin || cur.recolte || (cur.floraison ? addD(cur.floraison, 63) : addD(cur.debut, 90));
+      const tot = Math.max(1, diffD(cur.debut, fin));
+      const pct = s => Math.max(0, Math.min(100, diffD(cur.debut, s) / tot * 100));
+      const fl = cur.floraison ? pct(cur.floraison) : 100;
+      const ph = cur.debut <= T ? phase(sl, T) : null;
+      const reste = cur.recolte && cur.recolte >= T ? diffD(T, cur.recolte) : null;
+      h += '<div class="track"><div class="v" style="left:0;width:' + fl + '%"></div>' +
+        (cur.floraison ? '<div class="f" style="left:' + fl + '%;right:0"></div>' : '') +
+        (T >= cur.debut && T <= fin ? '<div class="t" style="left:' + pct(T) + '%"></div>' : '') + '</div>' +
+        '<div class="cy-d"><span>Début ' + shortDate(cur.debut) + '</span>' +
+        (cur.floraison ? '<span>12/12 ' + shortDate(cur.floraison) + '</span>' : '<span>12/12 —</span>') +
+        '<span>' + (cur.fin ? 'Fin ' + shortDate(cur.fin) : cur.recolte ? 'Récolte ' + shortDate(cur.recolte) : 'Récolte —') + '</span></div>' +
+        '<div style="margin-top:6px;font-size:14px">' + (ph ? '<b>' + esc(ph.txt) + '</b>' : cur.debut > T ? 'Débute dans ' + diffD(T, cur.debut) + ' j' : '') +
+        (reste != null ? ' · récolte dans ' + reste + ' j' : '') + '</div>' + nouveau(sl);
+    } else if (reg(sl)) h += nouveau(sl);
+    if (past.length) h += '<div class="cy-past">' + past.map(c =>
+      '<div>' + (c.source !== 'manuel' ? esc(c.onglet) + ' · ' : '') + shortDate(c.debut) + ' → ' + (c.fin ? shortDate(c.fin) : '…') + (c.cultivar ? ' · ' + esc(c.cultivar) : '') +
+      ' <a href="#" data-c="' + c.id + '">modifier</a></div>').join('') + '</div>';
+    return h + '</div>';
+  }).join('');
+  $('v-cycles').querySelectorAll('[data-c]').forEach(b => b.onclick = e => { e.preventDefault(); formCycle(S.d.cycles.find(c => c.id === b.dataset.c)); });
+  $('v-cycles').querySelectorAll('[data-n]').forEach(b => b.onclick = () => formCycle(null, b.dataset.n));
+  $('sync').onclick = async () => {
+    $('sync').disabled = true;
+    try { apply(await run('synchroniser', S.auth)); toast('Registres synchronisés'); }
+    catch (e) { toast(errMsg(e)); $('sync').disabled = false; }
+  };
+}
+
+function formCycle(c, salle) {
+  const edit = !!c;
+  const lock = edit && c.source !== 'manuel' ? ' disabled' : '';
+  open('<h3>' + (edit ? 'Cycle — ' + esc(c.salle) : 'Nouveau cycle') + '<button class="icon-btn" id="x">✕</button></h3>' +
+    (lock ? '<div class="meta">' + (c.source === 'lot'
+      ? 'Lot créé automatiquement à partir de la récolte de la grande salle (transplant = récolte + 2 jours ouvrables ; pots 4 po = transplant − 12 j ; bouture = pots 4 po − 14 j). Un seul lot à la fois en salle des boutures : en cas de conflit, le lot suivant entre à la sortie du précédent, fait au moins 10 j, et le transplant est décalé au besoin. Durées réglables dans l’onglet Paramètres.' + (c.remarque ? ' <b class="late">' + esc(c.remarque) + '</b>' : '')
+      : 'Dates tirées du registre de culture, onglet « ' + esc(c.onglet) + ' » (départ en B1, jours VEG en B2, jours FLO en B3). Pour les modifier, corrigez le registre.') +
+      ' Seul le cultivar se modifie ici.</div>' : '') +
+    (edit ? '' : '<label>Salle</label><select id="c-salle">' + opts(S.d.salles, salle || S.d.salles[0]) + '</select>') +
+    '<label>Cultivar(s)</label><input type="text" id="c-cult" maxlength="120" value="' + esc(edit ? c.cultivar : '') + '">' +
+    '<label>' + (edit && c.source === 'lot' ? 'Prise de boutures' : 'Début (transplantation)') + '</label><input type="date" id="c-deb"' + lock + ' value="' + (edit ? (c.source === 'lot' ? (c.boutures || c.debut) : c.debut) : S.d.today) + '">' +
+    '<label>' + (edit && c.source === 'lot' ? 'Transplant en pots 4 po' : 'Bascule 12/12') + '</label><input type="date" id="c-flo"' + lock + ' value="' + (edit ? (c.source === 'lot' ? c.pots : c.floraison) : '') + '">' +
+    '<label>' + (lock && c.source === 'registre' ? 'Dernier jour de floraison' : 'Récolte prévue') + '</label><input type="date" id="c-rec"' + lock + ' value="' + (edit ? c.recolte : '') + '">' +
+    (edit ? '<label>' + (c.source === 'lot' ? 'Transplant (sortie de la salle des boutures)' : 'Fin réelle (salle vidée)') + '</label><input type="date" id="c-fin"' + lock + ' value="' + (c.fin || '') + '">'
+          : '<label class="check" style="margin-top:16px"><input type="checkbox" id="c-tasks" checked> Ajouter la bascule et la récolte au calendrier</label>' +
+            '<div class="meta">Le cycle en cours dans cette salle sera clos la veille du nouveau début.</div>') +
+    '<div class="err" id="c-err"></div>' +
+    '<div class="foot"><button class="btn" id="c-no">Fermer</button><button class="btn pri" id="c-ok">Enregistrer</button></div>' +
+    (edit && !lock ? '<button class="linkdan" id="c-del">Annuler ce cycle (saisie erronée)</button>' : ''));
+  $('x').onclick = $('c-no').onclick = close;
+  $('c-ok').onclick = async () => {
+    const p = { cultivar: $('c-cult').value, debut: $('c-deb').value, floraison: $('c-flo').value, recolte: $('c-rec').value };
+    if (edit) { p.id = c.id; p.fin = $('c-fin').value; } else { p.salle = $('c-salle').value; p.creerTaches = $('c-tasks').checked; }
+    if (!p.debut) return $('c-err').textContent = 'Indiquez la date de début.';
+    $('c-ok').disabled = true;
+    try { apply(await run('enregistrerCycle', S.auth, p)); close(); toast('Cycle enregistré'); }
+    catch (e) { $('c-err').textContent = errMsg(e); $('c-ok').disabled = false; }
+  };
+  if (edit && !lock) $('c-del').onclick = async () => {
+    const m = prompt('Motif de l’annulation de ce cycle :');
+    if (!m || !m.trim()) return;
+    try { apply(await run('annulerCycle', S.auth, c.id, m.trim())); close(); toast('Cycle annulé'); }
+    catch (e) { $('c-err').textContent = errMsg(e); }
+  };
+}
+
+initLogin();
+</script>
+</body>
+</html>
