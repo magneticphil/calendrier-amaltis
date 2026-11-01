@@ -235,10 +235,16 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbz0xtED1W14j-I_OCOEPRUJ
 function appelServeur(fn, args) {
   if (window.google && google.script && google.script.run)
     return new Promise((ok, ko) => google.script.run.withSuccessHandler(ok).withFailureHandler(ko)[fn](...args));
-  return fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }), redirect: 'follow' })
-    .then(r => { if (!r.ok) throw new Error('Erreur réseau (' + r.status + ')'); return r.json(); })
+  const envoi = () => fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }), redirect: 'follow' })
+    .then(r => { if (!r.ok) throw new Error('Erreur réseau (' + r.status + ')'); return r.json(); });
+  // Lecture seule : une coupure réseau est relancée une fois après 1,5 s (jamais pour un enregistrement, pour éviter un doublon)
+  const lecture = ['listerNoms', 'charger', 'chargerPeriode'].includes(fn);
+  return envoi().catch(e => { if (!lecture) throw e; return new Promise(ok => setTimeout(ok, 1500)).then(envoi); })
     .then(j => { if (!j.ok) throw new Error(j.error); return j.data; });
 }
+// Hébergée hors de Google : l'écran reste disponible sans réseau (dernières données connues)
+if ('serviceWorker' in navigator && !(window.google && google.script) && /github\.io$/.test(location.hostname))
+  navigator.serviceWorker.register('sw.js').catch(() => {});
 function estPanne(e) {
   const m = e && e.message ? e.message : String(e || '');
   return !m || /network|réseau|timeout|délai|NetworkError|failed to fetch|load failed|erreur réseau|unavailable|indisponible|exceeded|dépassé|internal error|erreur interne|Une erreur s'est produite/i.test(m);
