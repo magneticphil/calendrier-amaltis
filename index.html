@@ -165,6 +165,7 @@
     </div>
     <div class="chips" id="filtre"></div>
     <div id="action-feedback" role="status" aria-live="polite" class="meta" style="padding:0 16px 8px" hidden></div>
+    <div id="file-attente" role="status" class="meta late" style="padding:0 16px 8px" hidden></div>
   </header>
   <main>
     <section id="v-cal"></section>
@@ -251,6 +252,128 @@ function estPanne(e) {
 }
 function errMsg(e) { return (e && e.message ? e.message : String(e)).replace(/^Error:\s*/, ''); }
 
+/* ---------- envoi en arrière-plan des actions sur les tâches ----------
+   Créer, modifier, cocher, remettre à faire, annuler, rétablir : l'action est affichée aussitôt, gardée sur le
+   téléphone (file d'envoi) avec un identifiant unique, puis envoyée en arrière-plan jusqu'à confirmation
+   (nouvel essai 3 s, 6 s, 12 s… jusqu'à 2 min), même après fermeture et réouverture de l'app.
+   Le serveur ignore un identifiant déjà reçu : jamais de doublon. Seul un refus définitif retire l'action. */
+const fileCle = () => 'cal_file_' + (S.auth && S.auth.nom ? String(S.auth.nom).toLowerCase() : '');
+function fileLire() { const q = load(fileCle()); return Array.isArray(q) ? q : []; }
+function fileEcrire(q) { store(fileCle(), q.length ? q : null); }
+function nouvelId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, '');
+  let r = ''; for (let i = 0; i < 32; i++) r += Math.floor(Math.random() * 16).toString(16); return r;
+}
+// Mêmes ID que le serveur pour les tâches créées (idOp_ / serieOp_ dans Code.gs)
+const idOp = (req, i) => req.slice(0, 8) + ('0' + i.toString(36)).slice(-2);
+const serieOp = (req, k) => req.slice(0, 7) + 's' + ('0' + k.toString(36)).slice(-2);
+function horodatage() { const n = new Date(), z = x => String(x).padStart(2, '0'); return S.d.today + ' ' + z(n.getHours()) + ':' + z(n.getMinutes()); }
+function jourDuReport(today) { let d = today; while (wd(d) > 4) d = addD(d, 1); return d; }  // approximation : le serveur corrige (fériés)
+/** Applique une action en attente à la liste des tâches (même règle que le serveur ; sans effet si déjà appliquée). */
+function appliquerAction(taches, it) {
+  const T = S.d.today, moi = S.d.moi, a = it.a;
+  const find = id => taches.find(x => x.id === id);
+  if (it.fn === 'changerStatut') {
+    const c = find(a.id); if (!c || c.statut === a.statut || c.statut === 'annulée') return;
+    let lot = [c];
+    if (a.serie && a.statut === 'annulée' && c.serie) lot = lot.concat(taches.filter(o => o.serie === c.serie && o.salle === c.salle && o.id !== c.id && o.date > c.date && o.statut === 'à faire'));
+    lot.forEach(o => {
+      if (a.statut === 'fait' && o.date > T) { o.prevue = o.date; o.date = T; }
+      if (a.statut === 'à faire') {
+        if (o.prevue && o.prevue >= T) { o.date = o.prevue; o.prevue = ''; }
+        else if (o.date < T) { if (!o.prevue) o.prevue = o.date; o.date = jourDuReport(T); }
+      }
+      o.statut = a.statut;
+      if (a.statut === 'fait') { o.faitPar = moi; o.faitLe = it.at; }
+      if (a.statut === 'à faire') { o.faitPar = ''; o.faitLe = ''; }
+      if (a.statut === 'annulée') o.motif = a.motif;
+      o.modifPar = moi; o.modifLe = it.at;
+    });
+  } else if (it.fn === 'retablirTache') {
+    const c = find(a.id); if (!c || c.statut !== 'annulée') return;
+    Object.assign(c, { statut: 'à faire', motif: '', faitPar: '', faitLe: '', modifPar: moi, modifLe: it.at });
+  } else if (it.fn === 'enregistrerTache' && a.id) {
+    const c = find(a.id); if (!c || c.statut === 'annulée') return;
+    const b = a.base || {}, champ = (k, v) => { if (String(v).trim() !== String(b[k] == null ? '' : b[k]).trim()) c[k] = String(v).trim(); };
+    const dateAvant = c.date;
+    champ('salle', a.salle); champ('date', a.date); champ('type', a.type); champ('titre', a.titre); champ('details', a.details);
+    if (c.statut === 'à faire' && c.date !== dateAvant) c.prevue = '';
+    if (!a.visInchange) c.visible = (a.visible || []).join(', ');
+  } else if (it.fn === 'enregistrerTache') {
+    if (find(idOp(it.id, 0))) return;
+    const fois = a.fois ? Math.max(1, Math.min(52, parseInt(a.fois, 10) || 1)) : 1;
+    const pas = Math.max(1, Math.min(120, parseInt(a.tousLes, 10) || 7));
+    let n = 0;
+    a.salles.forEach((sl, k) => { for (let i = 0; i < fois; i++) taches.push({
+      id: idOp(it.id, n++), serie: fois > 1 ? serieOp(it.id, k) : '', salle: sl, date: addD(a.date, i * pas), type: a.type,
+      titre: String(a.titre || '').trim(), details: String(a.details || '').trim(), statut: 'à faire', creePar: moi, faitPar: '', faitLe: '',
+      modifPar: '', modifLe: '', motif: '', auto: '', visible: (a.visible || []).join(', '), prevue: '', registre: '', regle: '' }); });
+  }
+}
+/** Les actions encore en file, par-dessus les données reçues du serveur. */
+function superposerFile() { if (!S.d || !S.d.taches) return; fileLire().forEach(it => { try { appliquerAction(S.d.taches, it); } catch (e) {} }); }
+const ARGS_ENVOI = {
+  changerStatut: (a, req) => [a.id, a.statut, a.motif || '', !!a.serie, true, req],
+  retablirTache: (a, req) => [a.id, true, req],
+  enregistrerTache: (a, req) => [a, true, req],
+};
+/** Enregistre une action : affichée tout de suite, envoyée en arrière-plan. */
+function enfiler(fn, a) {
+  const it = { id: nouvelId(), fn, a, at: horodatage(), t: Date.now() };
+  fileEcrire(fileLire().concat([it]));
+  dataRevision++;
+  appliquerAction(S.d.taches, it); cycleIndex = null; saveCache(); render();
+  envoiDelai = 3000; planifierEnvoi(0);
+  return it;
+}
+// Refus de contenu : définitifs. Tout le reste (réseau, lenteur ou panne de Google, verrou, code) est réessayé plus tard.
+const REFUS_DEFINITIF = /Type de tâche inconnu|Tâche introuvable|annulée et ne peut plus|annulée entre-temps|Choisissez au moins une salle|Statut invalide|motif est requis|Réservé à l|Élément introuvable|Salle inconnue|date invalide|Aucun foliaire|Action inconnue/i;
+let envoiEnCours = false, envoiMinuterie = null, envoiDelai = 3000;
+function planifierEnvoi(ms) { clearTimeout(envoiMinuterie); envoiMinuterie = setTimeout(viderFile, ms); }
+async function viderFile() {
+  if (envoiEnCours || !S.auth || !S.d) return;
+  const auth = S.auth; let q = fileLire();
+  if (!q.length) { envoiDelai = 3000; rappelFile(); return; }
+  envoiEnCours = true;
+  try {
+    while (q.length && S.auth === auth) {
+      const it = q[0];
+      try {
+        const r = await appelServeur(it.fn, [auth].concat(ARGS_ENVOI[it.fn](it.a, it.id)));
+        fileEcrire(fileLire().filter(x => x.id !== it.id)); q = fileLire();
+        dataRevision++; envoiDelai = 3000; apply(r);
+      } catch (e) {
+        const msg = errMsg(e);
+        if (!REFUS_DEFINITIF.test(msg)) { envoiDelai = Math.min(envoiDelai * 2, 120000); break; }
+        // Refus définitif : l'action est retirée, l'écran revient à l'état réel du serveur
+        fileEcrire(fileLire().filter(x => x.id !== it.id)); q = fileLire(); dataRevision++;
+        actionFeedback('Non enregistré (' + libelleAction(it) + ') : ' + msg, 0);
+        try { apply(await appelServeur('charger', [auth])); } catch (e2) { superposerFile(); render(); }
+      }
+    }
+  } finally {
+    envoiEnCours = false;
+    if (fileLire().length) planifierEnvoi(envoiDelai);
+    rappelFile();
+  }
+}
+function libelleAction(it) {
+  const a = it.a, t = S.d && S.d.taches.find(x => x.id === a.id), nom = t ? (t.titre || t.type) + ' · ' + t.salle : (a.titre || a.type || 'tâche');
+  if (it.fn === 'changerStatut') return (a.statut === 'fait' ? 'fait' : a.statut === 'annulée' ? 'annulation' : 'remise à faire') + ' — ' + nom;
+  if (it.fn === 'retablirTache') return 'rétablissement — ' + nom;
+  return (a.id ? 'modification — ' : 'nouvelle tâche — ') + nom;
+}
+// Discret : rien tant que l'envoi se fait normalement ; un rappel seulement si une action attend depuis plus de 10 minutes.
+function rappelFile() {
+  const box = $('file-attente'); if (!box) return;
+  const vieux = S.auth ? fileLire().filter(it => Date.now() - (it.t || 0) > 600000).length : 0;
+  box.hidden = !vieux;
+  if (vieux) box.textContent = vieux + (vieux > 1 ? ' actions pas encore transmises' : ' action pas encore transmise') +
+    '. Elle' + (vieux > 1 ? 's partiront' : ' partira') + ' automatiquement dès que le téléphone aura du réseau : ne vous déconnectez pas d’ici là.';
+}
+setInterval(rappelFile, 60000);
+window.addEventListener('online', () => planifierEnvoi(500));
+
 /* Dates en texte AAAA-MM-JJ, calculs en UTC */
 const toD = s => { const p = s.split('-').map(Number); return new Date(Date.UTC(p[0], p[1]-1, p[2])); };
 const toS = d => d.toISOString().slice(0, 10);
@@ -314,6 +437,7 @@ function apply(d) {
   }
   // Nouvelle journée depuis l'ouverture (données en cache) : la sélection suit « aujourd'hui »
   if (oldToday && S.d.today !== oldToday && S.jour === oldToday) { S.jour = S.d.today; S.mois = S.d.today.slice(0, 7); }
+  superposerFile();
   cycleIndex=null; saveCache(); render();
 }
 
@@ -348,12 +472,16 @@ async function start(u, initial) {
   S.d = initial || await run('charger', S.auth);
   S.mois = S.d.today.slice(0, 7); S.jour = S.d.today;
   const sf = load('cal_salle'); if (sf && (sf === 'Toutes' || S.d.salles.includes(sf))) S.salle = sf;
-  saveCache(); render();
+  superposerFile(); saveCache(); render();
+  planifierEnvoi(300);
 }
 function logout() { store(cacheKey(), null); store('cal_auth', null); location.reload(); }
-$('logout').onclick = () => { if (confirm('Se déconnecter ?')) logout(); };
-$('refresh').onclick = () => refresh();
-document.addEventListener('visibilitychange', () => { if (!document.hidden && S.d) refresh(true); });
+$('logout').onclick = () => {
+  const n = fileLire().length;
+  if (confirm(n ? n + ' action(s) pas encore transmise(s) : elles partiront à votre prochaine connexion sur ce téléphone. Se déconnecter quand même ?' : 'Se déconnecter ?')) logout();
+};
+$('refresh').onclick = () => { refresh(); planifierEnvoi(0); };
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S.d) { refresh(true); planifierEnvoi(300); } });
 
 /* ---------- Navigation ---------- */
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
@@ -507,30 +635,11 @@ function bindCards(root) {
     const t = S.d.taches.find(x => x.id === b.dataset.id);
     if (b.dataset.a === 'edit') return formTache(t);
     if (b.dataset.a === 'cancel') return formAnnulTache(t);
-    if (b.dataset.a === 'restore') {
-      try { apply(await run('retablirTache', S.auth, t.id)); toast('Tâche rétablie'); } catch (e) { toast(errMsg(e)); }
-      return;
-    }
-    if (mutationPending) return;
-    // Affichage immédiat (même règle que le serveur), puis confirmation ; en cas d'échec, retour à l'état précédent
+    if (b.dataset.a === 'restore') { enfiler('retablirTache', { id: t.id }); toast('Tâche rétablie'); return; }
+    // Affichage immédiat (même règle que le serveur), envoi en arrière-plan
     const fait = b.dataset.a === 'fait';
-    const avant = Object.assign({}, t);
-    if (fait) {
-      if (t.date > S.d.today) { t.prevue = t.date; t.date = S.d.today; }
-      Object.assign(t, { statut: 'fait', faitPar: S.d.moi, faitLe: 'en cours…' });
-    } else {
-      if (t.prevue && t.prevue >= S.d.today) { t.date = t.prevue; t.prevue = ''; }
-      Object.assign(t, { statut: 'à faire', faitPar: '', faitLe: '' });
-    }
-    cycleIndex = null; render();
-    try { apply(await run('changerStatut', S.auth, t.id, fait ? 'fait' : 'à faire', '', false));
-          toast(fait ? 'Marquée comme faite' : 'Remise à faire'); }
-    catch (e) {
-      const i = S.d.taches.findIndex(x => x.id === avant.id);
-      if (i >= 0) S.d.taches[i] = avant;
-      cycleIndex = null; render();
-      toast('Non enregistré : ' + errMsg(e));
-    }
+    enfiler('changerStatut', { id: t.id, statut: fait ? 'fait' : 'à faire' });
+    toast(fait ? 'Marquée comme faite' : 'Remise à faire');
   });
 }
 
@@ -559,21 +668,26 @@ function formTache(t, date) {
   $('x').onclick = $('f-no').onclick = close;
   if (!edit) $('f-rep').onchange = e => $('f-repbox').classList.toggle('hidden', !e.target.checked);
   visBind();
-  $('f-ok').onclick = async () => {
+  const vis0 = JSON.stringify(visLire().slice().sort());
+  $('f-ok').onclick = () => {
     const p = { date: $('f-date').value, type: $('f-type').value, titre: $('f-titre').value, details: $('f-det').value, visible: visLire() };
-    if (edit) { p.id = t.id; p.salle = $('f-salle').value; }
+    if (edit) {
+      p.id = t.id; p.salle = $('f-salle').value;
+      // Valeurs d'origine : seuls les champs réellement changés seront écrits
+      p.base = { salle: t.salle, date: t.date, type: t.type, titre: t.titre, details: t.details };
+      p.visInchange = JSON.stringify(p.visible.slice().sort()) === vis0;
+    }
     else {
       p.salles = [...document.querySelectorAll('input[name=fs]:checked')].map(i => i.value);
       if (!p.salles.length) return $('f-err').textContent = 'Choisissez au moins une salle.';
       if ($('f-rep').checked) { p.tousLes = $('f-pas').value; p.fois = $('f-fois').value; }
     }
     if (!p.date) return $('f-err').textContent = 'Indiquez une date.';
-    $('f-ok').disabled = true;
-    try {
-      apply(await run('enregistrerTache', S.auth, p)); close();
-      if (!edit) { S.jour = p.date; S.mois = p.date.slice(0, 7); render(); }
-      toast(edit ? 'Tâche modifiée' : 'Tâche ajoutée');
-    } catch (e) { $('f-err').textContent = errMsg(e); $('f-ok').disabled = false; }
+    if (!S.d.types.includes(p.type)) return $('f-err').textContent = 'Type de tâche inconnu.';
+    close();
+    if (!edit) { S.jour = p.date; S.mois = p.date.slice(0, 7); }
+    enfiler('enregistrerTache', p);
+    toast(edit ? 'Tâche modifiée' : 'Tâche ajoutée');
   };
 }
 
@@ -649,9 +763,10 @@ function formAnnulTache(t) {
   $('a-ok').onclick = async () => {
     const m = $('a-motif').value.trim();
     if (!m) return $('a-err').textContent = 'Indiquez un motif.';
-    $('a-ok').disabled = true;
-    try { apply(await run('changerStatut', S.auth, t.id, 'annulée', m, suite ? $('a-serie').checked : false)); close(); toast('Tâche annulée'); }
-    catch (e) { $('a-err').textContent = errMsg(e); $('a-ok').disabled = false; }
+    const serie = suite ? $('a-serie').checked : false;
+    close();
+    enfiler('changerStatut', { id: t.id, statut: 'annulée', motif: m, serie });
+    toast('Tâche annulée');
   };
 }
 
