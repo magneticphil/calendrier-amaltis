@@ -466,7 +466,7 @@ function card(t, withDate) {
   // Trim en cours : jour N (jours de semaine depuis le début du trim)
   let jourTrim = 0;
   if (trimEnCours) for (let d = t.prevue || t.date; d <= t.date; d = addD(d, 1)) { const w = toD(d).getUTCDay(); if (w && w < 6) jourTrim++; }
-  const titreCarte = trimEnCours ? 'Trim en cours — jour ' + Math.max(1, jourTrim) : (t.titre || t.type);
+  const titreCarte = trimEnCours ? (t.titre || 'Trim en cours') + ' — jour ' + Math.max(1, jourTrim) : (t.titre || t.type);
   const meta = t.statut === 'annulée' ? 'Annulée par ' + (t.modifPar || '?') + (t.modifLe ? ' · ' + t.modifLe : '') + (t.motif ? ' · motif : ' + t.motif : '')
     : t.statut === 'fait' ? (t.faitPar === 'registre' ? 'Fait selon le registre de culture' : 'Fait par ' + t.faitPar + ' · ' + t.faitLe) +
       (t.prevue ? ' · prévue le ' + shortDate(t.prevue) : '') + (t.registre && t.creePar !== 'registre' ? ' · registre : ' + t.registre.split(' :: ')[1] : '')
