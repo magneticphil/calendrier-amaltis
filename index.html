@@ -277,7 +277,8 @@ function phase(salle, date) {
 
 /* ---------- Données ---------- */
 function visibles() {
-  return S.d.taches.filter(t => t.statut !== 'annulée' && (S.salle === 'Toutes' || t.salle === S.salle));
+  // Un trim commencé est représenté par sa carte « Trim en cours » : la tâche de départ n'est plus affichée
+  return S.d.taches.filter(t => t.statut !== 'annulée' && !(t.regle === 'TRIM' && t.statut === 'fait') && (S.salle === 'Toutes' || t.salle === S.salle));
 }
 async function rafraichirDepart() {
   for (let i = 0; i < 6; i++) {
@@ -466,7 +467,11 @@ function card(t, withDate) {
   // Trim en cours : jour N (jours de semaine depuis le début du trim)
   let jourTrim = 0;
   if (trimEnCours) for (let d = t.prevue || t.date; d <= t.date; d = addD(d, 1)) { const w = toD(d).getUTCDay(); if (w && w < 6) jourTrim++; }
-  const titreCarte = trimEnCours ? (t.titre || 'Trim en cours') + ' — jour ' + Math.max(1, jourTrim) : (t.titre || t.type);
+  const trimFini = t.regle === 'TRIMF' && t.statut === 'fait';
+  if (trimFini) for (let d = t.prevue || t.date; d <= t.date; d = addD(d, 1)) { const w = toD(d).getUTCDay(); if (w && w < 6) jourTrim++; }
+  const titreCarte = trimEnCours ? (t.titre || 'Trim en cours') + ' — jour ' + Math.max(1, jourTrim)
+    : trimFini ? (t.titre || 'Trim').replace(/^Trim en cours/, 'Trim') + ' — terminé' + (t.prevue ? ' (' + jourTrim + ' j)' : '')
+    : (t.titre || t.type);
   const meta = t.statut === 'annulée' ? 'Annulée par ' + (t.modifPar || '?') + (t.modifLe ? ' · ' + t.modifLe : '') + (t.motif ? ' · motif : ' + t.motif : '')
     : t.statut === 'fait' ? (t.faitPar === 'registre' ? 'Fait selon le registre de culture' : 'Fait par ' + t.faitPar + ' · ' + t.faitLe) +
       (t.prevue ? ' · prévue le ' + shortDate(t.prevue) : '') + (t.registre && t.creePar !== 'registre' ? ' · registre : ' + t.registre.split(' :: ')[1] : '')
@@ -485,7 +490,7 @@ function card(t, withDate) {
     (t.statut === 'annulée' ? '<div class="acts">' + (S.d.admin ? '<button class="btn" data-a="restore" data-id="' + t.id + '">↺ Rétablir</button>' : '') + '</div></div></div>' :
     '<div class="acts">' +
       (t.statut === 'fait' ? '<button class="btn" data-a="undo" data-id="' + t.id + '">Remettre à faire</button>'
-                           : '<button class="btn ok" data-a="fait" data-id="' + t.id + '">' + (trimEnCours ? '✓ Trim terminé' : '✓ Fait') + '</button>') +
+                           : '<button class="btn ok" data-a="fait" data-id="' + t.id + '">' + (trimEnCours ? '✓ Trim terminé' : t.regle === 'TRIM' ? '▶ Commencer maintenant' : '✓ Fait') + '</button>') +
       '<button class="btn" data-a="edit" data-id="' + t.id + '">Modifier</button>' +
       '<button class="btn dan" data-a="cancel" data-id="' + t.id + '">Annuler</button>' +
     '</div></div></div>');
