@@ -461,9 +461,14 @@ function renderListe() {
 /* ---------- Carte tâche ---------- */
 function card(t, withDate) {
   const ph = phase(t.salle, t.date);
-  const late = t.statut === 'à faire' && t.date < S.d.today;
+  // Deleaf : tâche de plusieurs jours, « en cours » dès sa date jusqu'à « Deleaf terminé » (chaque salle indépendante)
+  const deleafEnCours = t.type === 'Deleaf' && t.statut === 'à faire' && (t.prevue || t.date) <= S.d.today;
+  const deleafFini = t.type === 'Deleaf' && t.statut === 'fait' && t.prevue && t.prevue < t.date;
+  let jourDeleaf = 0;
+  if (deleafEnCours || deleafFini) for (let d = t.prevue || t.date; d <= (deleafEnCours ? S.d.today : t.date); d = addD(d, 1)) { const w = toD(d).getUTCDay(); if (w && w < 6) jourDeleaf++; }
+  const late = t.statut === 'à faire' && t.date < S.d.today && !deleafEnCours;
   const trimEnCours = t.regle === 'TRIMF' && t.statut === 'à faire';
-  const reportee = !trimEnCours && t.statut === 'à faire' && t.prevue && t.prevue < t.date;
+  const reportee = !trimEnCours && !deleafEnCours && t.statut === 'à faire' && t.prevue && t.prevue < t.date;
   // Trim en cours : jour N (jours de semaine depuis le début du trim)
   let jourTrim = 0;
   if (trimEnCours) for (let d = t.prevue || t.date; d <= t.date; d = addD(d, 1)) { const w = toD(d).getUTCDay(); if (w && w < 6) jourTrim++; }
@@ -471,6 +476,8 @@ function card(t, withDate) {
   if (trimFini) for (let d = t.prevue || t.date; d <= t.date; d = addD(d, 1)) { const w = toD(d).getUTCDay(); if (w && w < 6) jourTrim++; }
   const titreCarte = trimEnCours ? (t.titre || 'Trim en cours') + ' — jour ' + Math.max(1, jourTrim)
     : trimFini ? (t.titre || 'Trim').replace(/^Trim en cours/, 'Trim') + ' — terminé' + (t.prevue ? ' (' + jourTrim + ' j)' : '')
+    : deleafEnCours ? (t.titre || 'Deleaf') + ' — en cours, jour ' + Math.max(1, jourDeleaf)
+    : deleafFini ? (t.titre || 'Deleaf') + ' — terminé (' + jourDeleaf + ' j)'
     : (t.titre || t.type);
   const meta = t.statut === 'annulée' ? 'Annulée par ' + (t.modifPar || '?') + (t.modifLe ? ' · ' + t.modifLe : '') + (t.motif ? ' · motif : ' + t.motif : '')
     : t.statut === 'fait' ? (t.faitPar === 'registre' ? 'Fait selon le registre de culture' : 'Fait par ' + t.faitPar + ' · ' + t.faitLe) +
@@ -490,7 +497,7 @@ function card(t, withDate) {
     (t.statut === 'annulée' ? '<div class="acts">' + (S.d.admin ? '<button class="btn" data-a="restore" data-id="' + t.id + '">↺ Rétablir</button>' : '') + '</div></div></div>' :
     '<div class="acts">' +
       (t.statut === 'fait' ? '<button class="btn" data-a="undo" data-id="' + t.id + '">Remettre à faire</button>'
-                           : '<button class="btn ok" data-a="fait" data-id="' + t.id + '">' + (trimEnCours ? '✓ Trim terminé' : t.regle === 'TRIM' ? '▶ Commencer maintenant' : '✓ Fait') + '</button>') +
+                           : '<button class="btn ok" data-a="fait" data-id="' + t.id + '">' + (trimEnCours ? '✓ Trim terminé' : deleafEnCours ? '✓ Deleaf terminé' : t.regle === 'TRIM' ? '▶ Commencer maintenant' : '✓ Fait') + '</button>') +
       '<button class="btn" data-a="edit" data-id="' + t.id + '">Modifier</button>' +
       '<button class="btn dan" data-a="cancel" data-id="' + t.id + '">Annuler</button>' +
     '</div></div></div>');
