@@ -77,6 +77,7 @@
   .row1 { margin-top:3px; }
   .det { color:var(--ink); font-size:14px; white-space:pre-wrap; margin-top:2px; }
   .meta { font-size:12px; color:var(--mute); margin-top:4px; }
+  .jp { font-size:13px; color:var(--mute); margin-top:1px; }
   .acts { display:flex; gap:6px; margin-top:8px; }
   .btn { border:1px solid var(--line); background:var(--card); border-radius:8px; padding:6px 10px; font-size:14px; }
   .btn.pri { background:var(--acc); border-color:var(--acc); color:#fff; }
@@ -384,6 +385,32 @@ const longDate = s => { const d = toD(s); return JOURS[wd(s)] + ' ' + d.getUTCDa
 const MCOURT = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
 const shortDate = s => { const d = toD(s); return d.getUTCDate() + ' ' + MCOURT[d.getUTCMonth()] + (s.slice(0,4) !== S.d.today.slice(0,4) ? ' ' + s.slice(0,4) : ''); };
 
+/* ---------- Petite traduction japonaise sous le titre des tâches (pour les employés listés ici) ---------- */
+const JAPONAIS = ['taé', 'tae'];
+const JP_TITRES = [  // du plus précis au plus général ; les noms de produits restent tels quels
+  [/^Premier Deleaf/i, '1回目の下葉取り'], [/^Deuxième Deleaf/i, '2回目の下葉取り'], [/^Troisième Deleaf/i, '3回目の下葉取り'],
+  [/^Vider les séchoirs/i, '乾燥室を空にする'], [/^Debud/i, 'バッキング（枝から花を外す）'], [/^Trim/i, 'トリミング'],
+  [/^Récolte/i, '収穫'], [/^Transplant 4 po/i, '4インチポットへ植え替え'], [/^Transfert du lot/i, 'ロットの移動'],
+  [/^Transplant/i, '定植'], [/^(Prise de boutures|Bouture)/i, '挿し木'], [/^Pose filet/i, 'ネット設置'],
+  [/en floraison sur l'automate/i, '制御装置を開花モード（12/12）に切替'], [/mode VEG sur l'automate/i, '制御装置を栄養成長モードに戻す'],
+  [/^Envoi échantillon sol/i, '土壌サンプル発送'], [/^Envoi leaf test/i, '葉分析サンプル発送'],
+  [/^Commande insectes/i, '天敵昆虫の注文'], [/^Réception et application insectes/i, '天敵昆虫の受取・放飼'],
+];
+const JP_TYPES = {
+  'Deleaf':'下葉取り', 'Défoliation':'摘葉', 'Récolte':'収穫', 'Transplantation':'定植', 'Bouturage':'挿し木', 'Filet':'ネット設置',
+  'Foliaire':'葉面散布', 'Top-dress':'トップドレス（追肥）', 'Amendement':'土壌改良', 'Thé / inoculant':'堆肥茶・微生物資材',
+  'Échantillon sol':'土壌サンプル', 'Leaf test':'葉分析', 'Lutte intégrée':'総合的病害虫管理', 'Bascule 12/12':'光周期の切替',
+  'Post-prod':'収穫後作業', 'Entretien':'メンテナンス', 'Autre':'その他',
+};
+const enJaponais = () => S.d && JAPONAIS.includes(String(S.d.moi || '').toLowerCase());
+function jpTitre(t, etat) {
+  const titre = t.titre || '', f = JP_TITRES.find(([re]) => re.test(titre));
+  let jp = f ? f[1] : (JP_TYPES[t.type] || '');
+  if (!jp) return '';
+  const produit = !f && titre.includes(' — ') ? '：' + titre.split(' — ').slice(1).join(' — ') : '';  // ex. « Foliaire — Régalia »
+  return jp + produit + (etat || '');
+}
+
 /* ---------- Cycles et phases ---------- */
 let cycleIndex=null;
 function cycleAt(salle,date){
@@ -614,6 +641,8 @@ function card(t, withDate) {
       (t.modifPar && t.modifPar !== 'auto' ? ' · modifié par ' + t.modifPar : '');
   return '<div class="card ' + t.statut + '"><div class="bar" style="background:' + (COUL[t.type] || '#999') + '"></div><div class="body">' +
     '<div class="ttl">' + esc(t.salle) + ' — ' + esc(titreCarte) + '</div>' +
+    (enJaponais() ? (j => j ? '<div class="jp" lang="ja">' + esc(j) + '</div>' : '')(jpTitre(t,
+      trimEnCours ? '中・' + Math.max(1, jourTrim) + '日目' : deleafEnCours ? '・作業中（' + Math.max(1, jourDeleaf) + '日目）' : (trimFini || deleafFini) ? '・完了' : '')) : '') +
     '<div class="row1"><span class="badge" style="color:' + (COUL[t.type] || '#999') + '">' + esc(t.type) + '</span>' +
     (ph ? '<span>' + esc(ph.txt) + '</span>' : '') +
     (withDate ? '<span class="' + (late ? 'late' : '') + '">' + shortDate(t.date) + (late ? ' · en retard' : '') + '</span>' : '') +
