@@ -743,23 +743,30 @@ function formTache(t, date) {
 /* ---------- Accès par type (admin) ---------- */
 function renderAcces() {
   const emp = (S.d.employes || []).filter(n => n !== S.d.moi);
+  // Cases cochées mais pas encore enregistrées : gardées si l'écran se redessine (mise à jour en arrière-plan)
+  const brouillon = S.accesBrouillon || (S.accesBrouillon = {});
   const rows = (S.d.acces || []).map(a => {
     const vis = String(a.visible || '').split(/,\s*/).filter(Boolean);
+    const coche = n => brouillon[a.type] ? brouillon[a.type].includes(n) : (!vis.length || vis.includes(n));
     const coul = COUL[a.type] || '#475569';
     return '<div class="acc-row" data-type="' + esc(a.type) + '">' +
       '<span class="acc-type" style="background:' + coul + '">' + esc(a.type) + '</span>' +
       '<div class="pills">' + emp.map(n => '<label><input type="checkbox" value="' + esc(n) + '"' +
-        (!vis.length || vis.includes(n) ? ' checked' : '') + '><span>' + esc(n) + '</span></label>').join('') + '</div></div>';
+        (coche(n) ? ' checked' : '') + '><span>' + esc(n) + '</span></label>').join('') + '</div></div>';
   }).join('');
   $('v-acces').innerHTML = '<h2>Qui voit quoi</h2><div class="meta" style="margin-bottom:10px">Cochez les employés qui voient chaque type de tâche. ' +
     'Vous voyez toujours tout ; la personne qui crée une tâche la voit aussi. Pour une tâche précise, utilisez « Visible par » dans la tâche.</div>' +
     rows + '<button class="btn pri full" id="acc-ok" style="margin-top:12px">Enregistrer</button>';
+  $('v-acces').querySelectorAll('.acc-row').forEach(r => r.addEventListener('change', () => {
+    brouillon[r.dataset.type] = [...r.querySelectorAll('input:checked')].map(i => i.value);
+  }));
   $('acc-ok').onclick = async () => {
     const lignes = [...$('v-acces').querySelectorAll('.acc-row')].map(r => ({
       type: r.dataset.type, visible: [...r.querySelectorAll('input:checked')].map(i => i.value) }));
     if (lignes.some(l => !l.visible.length) && !confirm('Certains types ne seront visibles que par vous. Continuer ?')) return;
     $('acc-ok').disabled = true;
-    try { apply(await run('enregistrerAcces', S.auth, lignes.map(l => ({ type: l.type, visible: l.visible.length ? l.visible : [S.d.moi] })))); toast('Accès enregistrés'); }
+    try { const r = await run('enregistrerAcces', S.auth, lignes.map(l => ({ type: l.type, visible: l.visible.length ? l.visible : [S.d.moi] })));
+          S.accesBrouillon = null; apply(r); toast('Accès enregistrés'); }
     catch (e) { toast(errMsg(e)); $('acc-ok').disabled = false; }
   };
 }
