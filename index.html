@@ -78,6 +78,9 @@
   .det { color:var(--ink); font-size:14px; white-space:pre-wrap; margin-top:2px; }
   .meta { font-size:12px; color:var(--mute); margin-top:4px; }
   .jp { font-size:13px; color:var(--mute); margin-top:1px; }
+  h2 small .ph::before { content:''; display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:4px; vertical-align:1px; background:#9ca3af; }
+  h2 small .ph.veg::before { background:#3f9b5a; } h2 small .ph.flo::before { background:#e08a1e; }
+  h2 small .sep { color:var(--line); margin:0 2px; }
   .acts { display:flex; gap:6px; margin-top:8px; }
   .btn { border:1px solid var(--line); background:var(--card); border-radius:8px; padding:6px 10px; font-size:14px; }
   .btn.pri { background:var(--acc); border-color:var(--acc); color:#fff; }
@@ -421,8 +424,25 @@ function phase(salle, date) {
   const c = cycleAt(salle, date);
   if (!c) return null;
   if (c.source === 'lot') return { k:'veg', txt:'4 po J' + (diffD(c.pots || c.debut, date) + 1) + ' · ' + c.onglet };
-  if (c.floraison && date >= c.floraison) { const j = diffD(c.floraison, date) + 1; return { k:'flo', txt:'Flo J' + j + ' · S' + Math.ceil(j / 7) }; }
+  if (c.floraison && date >= c.floraison) { const j = diffD(c.floraison, date) + 1; return { k:'flo', txt:'Flo J' + j + ' (sem. ' + Math.ceil(j / 7) + ')' }; }
   return { k:'veg', txt:'Végé J' + (diffD(c.debut, date) + 1) };
+}
+
+/* En-tête du jour : « Salle 3 · Flo J12 (sem. 2) | Salle 4 · Flo J61 (sem. 9) · récolte dans 2 j | … » */
+const SALLES_MERES = ['Salle 2'];  // salle des plants mères, en continu : pas de compteur de jours
+function resumeSalle(sl, jour, seule) {
+  const c = cycleAt(sl, jour), nom = seule ? '' : sl + ' · ';
+  if (SALLES_MERES.includes(sl)) return seule ? '' : '<span class="ph veg">' + esc(sl) + ' · Mères</span>';
+  if (!c) return '';
+  if (c.source === 'lot') return '<span class="ph lot">' + esc(nom + '4 po J' + (diffD(c.pots || c.debut, jour) + 1) + ' → ' + String(c.onglet || '').replace(/^lot pour /, '')) + '</span>';
+  const p = phase(sl, jour);
+  let txt = nom + p.txt;
+  if (p.k === 'flo') {  // récolte proche (tâche Récolte du calendrier, sinon date du registre)
+    const rec = S.d.taches.filter(t => t.salle === sl && t.type === 'Récolte' && t.statut === 'à faire' && t.date >= jour).map(t => t.date).sort()[0] || (c.recolte && c.recolte >= jour ? c.recolte : '');
+    const n = rec ? diffD(jour, rec) : -1;
+    if (n === 0) txt += ' · récolte aujourd’hui'; else if (n > 0 && n <= 7) txt += ' · récolte dans ' + n + ' j';
+  }
+  return '<span class="ph ' + p.k + '">' + esc(txt) + '</span>';
 }
 
 /* ---------- Données ---------- */
@@ -573,8 +593,8 @@ function renderCal() {
     ? '<div class="legend"><span><i style="background:var(--veg);border:1px solid #cfe3d3"></i>Lot en pots 4 po</span></div>'
     : '<div class="legend"><span><i style="background:var(--veg);border:1px solid #cfe3d3"></i>Végétation</span><span><i style="background:var(--flo);border:1px solid #f1dcb6"></i>Floraison</span></div>';
   const dayT = (parJour[S.jour] || []).sort(byType);
-  const phs = (one ? [S.salle] : S.d.salles).map(sl => { const p = phase(sl, S.jour); return p ? (one ? '' : sl.replace('Salle ', 'S') + ' ') + p.txt : null; }).filter(Boolean);
-  h += '<h2>' + cap(longDate(S.jour)) + (phs.length ? ' <small>· ' + esc(phs.join(' · ')) + '</small>' : '') + '</h2>';
+  const phs = (one ? [S.salle] : S.d.salles).map(sl => resumeSalle(sl, S.jour, one)).filter(Boolean);
+  h += '<h2>' + cap(longDate(S.jour)) + (phs.length ? ' <small>· ' + phs.join(' <span class="sep">|</span> ') + '</small>' : '') + '</h2>';
   h += dayT.length ? dayT.map(t => card(t, false)).join('') : '<div class="empty">Aucune tâche.</div>';
   if (S.d.admin) {
     const ann = S.d.taches.filter(t => t.statut === 'annulée' && t.creePar !== 'registre' && t.date === S.jour && (S.salle === 'Toutes' || t.salle === S.salle));
