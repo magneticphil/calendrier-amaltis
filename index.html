@@ -424,8 +424,16 @@ function phase(salle, date) {
   const c = cycleAt(salle, date);
   if (!c) return null;
   if (c.source === 'lot') return { k:'veg', txt:'4 po J' + (diffD(c.pots || c.debut, date) + 1) + ' · ' + c.onglet };
-  if (c.floraison && date >= c.floraison) { const j = diffD(c.floraison, date) + 1; return { k:'flo', txt:'Flo J' + j + ' (sem. ' + Math.ceil(j / 7) + ')' }; }
-  return { k:'veg', txt:'Végé J' + (diffD(c.debut, date) + 1) };
+  // Semaine de la phase, comme au registre (« Veg S2 », « Flo S1 »), puis le jour compté depuis le début de la phase
+  const ph = (k, nom, depuis, suffixe) => { const j = diffD(depuis, date) + 1; return { k, txt: nom + ' S' + Math.ceil(j / 7) + ' · J' + j + (suffixe || '') }; };
+  // Round récolté mais pas encore remplacé au registre : plus de compteur de floraison
+  if (!c.fin && c.recolte && date > c.recolte) {
+    const tr = S.d.taches.filter(t => t.salle === salle && t.type === 'Transplantation' && t.statut !== 'annulée' && t.date > c.recolte).map(t => t.date).sort()[0];
+    if (tr && date >= tr) return ph('veg', 'Végé', tr, ' (prévu)');
+    return { k:'fin', txt:'Récoltée' + (tr ? ', transplant le ' + shortDate(tr) : '') };
+  }
+  if (c.floraison && date >= c.floraison) return ph('flo', 'Flo', c.floraison);
+  return ph('veg', 'Végé', c.debut);
 }
 
 /* En-tête du jour : « Salle 3 · Flo J12 (sem. 2) | Salle 4 · Flo J61 (sem. 9) · récolte dans 2 j | … » */
