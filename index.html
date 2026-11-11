@@ -288,8 +288,8 @@ function appliquerAction(taches, it) {
         else if (o.date < T) { if (!o.prevue) o.prevue = o.date; o.date = jourDuReport(T); }
       }
       o.statut = a.statut;
-      if (a.statut === 'fait') { o.faitPar = moi; o.faitLe = it.at; }
-      if (a.statut === 'à faire') { o.faitPar = ''; o.faitLe = ''; }
+      if (a.statut === 'fait') { o.faitPar = moi; o.faitLe = it.at; if (o === c && a.appli) o.appli = JSON.stringify(a.appli); }
+      if (a.statut === 'à faire') { o.faitPar = ''; o.faitLe = ''; o.appli = ''; }
       if (a.statut === 'annulée') o.motif = a.motif;
       o.modifPar = moi; o.modifLe = it.at;
     });
@@ -311,13 +311,13 @@ function appliquerAction(taches, it) {
     a.salles.forEach((sl, k) => { for (let i = 0; i < fois; i++) taches.push({
       id: idOp(it.id, n++), serie: fois > 1 ? serieOp(it.id, k) : '', salle: sl, date: addD(a.date, i * pas), type: a.type,
       titre: String(a.titre || '').trim(), details: String(a.details || '').trim(), statut: 'à faire', creePar: moi, faitPar: '', faitLe: '',
-      modifPar: '', modifLe: '', motif: '', auto: '', visible: (a.visible || []).join(', '), prevue: '', registre: '', regle: '' }); });
+      modifPar: '', modifLe: '', motif: '', auto: '', visible: (a.visible || []).join(', '), prevue: '', registre: '', regle: '', appli: '' }); });
   }
 }
 /** Les actions encore en file, par-dessus les données reçues du serveur. */
 function superposerFile() { if (!S.d || !S.d.taches) return; fileLire().forEach(it => { try { appliquerAction(S.d.taches, it); } catch (e) {} }); }
 const ARGS_ENVOI = {
-  changerStatut: (a, req) => [a.id, a.statut, a.motif || '', !!a.serie, true, req],
+  changerStatut: (a, req) => [a.id, a.statut, a.motif || '', !!a.serie, true, req, a.appli || null],
   retablirTache: (a, req) => [a.id, true, req],
   enregistrerTache: (a, req) => [a, true, req],
 };
@@ -331,7 +331,7 @@ function enfiler(fn, a) {
   return it;
 }
 // Refus de contenu : définitifs. Tout le reste (réseau, lenteur ou panne de Google, verrou, code) est réessayé plus tard.
-const REFUS_DEFINITIF = /Type de tâche inconnu|Tâche introuvable|annulée et ne peut plus|annulée entre-temps|Choisissez au moins une salle|Statut invalide|motif est requis|Réservé à l|Élément introuvable|Salle inconnue|date invalide|Aucun foliaire|Action inconnue/i;
+const REFUS_DEFINITIF = /Type de tâche inconnu|Tâche introuvable|annulée et ne peut plus|annulée entre-temps|Choisissez au moins une salle|Statut invalide|motif est requis|Réservé à l|Élément introuvable|Salle inconnue|date invalide|Aucun foliaire|Action inconnue|Foliaire : produit/i;
 let envoiEnCours = false, envoiMinuterie = null, envoiDelai = 3000;
 function planifierEnvoi(ms) { clearTimeout(envoiMinuterie); envoiMinuterie = setTimeout(viderFile, ms); }
 async function viderFile() {
@@ -664,7 +664,8 @@ function card(t, withDate) {
     : (t.titre || t.type);
   const meta = t.statut === 'annulée' ? 'Annulée par ' + (t.modifPar || '?') + (t.modifLe ? ' · ' + t.modifLe : '') + (t.motif ? ' · motif : ' + t.motif : '')
     : t.statut === 'fait' ? (t.faitPar === 'registre' ? 'Fait selon le registre de culture' : 'Fait par ' + t.faitPar + ' · ' + t.faitLe) +
-      (t.prevue ? ' · prévue le ' + shortDate(t.prevue) : '') + (t.registre && t.creePar !== 'registre' ? ' · registre : ' + t.registre.split(' :: ')[1] : '')
+      (t.prevue ? ' · prévue le ' + shortDate(t.prevue) : '') + (texteAppli(t) ? ' · ' + texteAppli(t) : '') +
+      (t.registre && t.creePar !== 'registre' && !texteAppli(t) ? ' · registre : ' + t.registre.split(' :: ')[1] : '')
     : (t.creePar === 'auto' ? 'Planifiée automatiquement' : 'Planifié par ' + t.creePar) +
       (t.modifPar && t.modifPar !== 'auto' ? ' · modifié par ' + t.modifPar : '');
   return '<div class="card ' + t.statut + '"><div class="bar" style="background:' + (COUL[t.type] || '#999') + '"></div><div class="body">' +
@@ -695,6 +696,7 @@ function bindCards(root) {
     if (b.dataset.a === 'restore') { enfiler('retablirTache', { id: t.id }); toast('Tâche rétablie'); return; }
     // Affichage immédiat (même règle que le serveur), envoi en arrière-plan
     const fait = b.dataset.a === 'fait';
+    if (fait && t.type === 'Foliaire') return formFoliaire(t);  // quantités demandées, inscrites ensuite au registre GACP
     enfiler('changerStatut', { id: t.id, statut: fait ? 'fait' : 'à faire' });
     toast(fait ? 'Marquée comme faite' : 'Remise à faire');
   });
@@ -813,6 +815,39 @@ function visLire() {
   if (box.querySelector('input[value="*"]').checked) return [];
   const noms = [...box.querySelectorAll('input:checked')].map(i => i.value).filter(v => v !== '*' && v !== '__moi');
   return [S.d.moi].concat(noms);
+}
+
+/* ---------- Foliaire fait : produit, quantité, bouillie (inscrits au registre GACP par la synchro) ---------- */
+const UNITES_FOLIAIRE = ['ml', 'L', 'g', 'kg'];
+const lireAppli = t => { try { return t && t.appli ? JSON.parse(t.appli) : null; } catch (e) { return null; } };
+const nombreFr = n => String(n).replace('.', ',');
+function texteAppli(t) { const a = lireAppli(t); return a ? a.produit + ' ' + nombreFr(a.quantite) + ' ' + a.unite + ' · bouillie ' + nombreFr(a.bouillie) + ' L' : ''; }
+function formFoliaire(t) {
+  const produit = (t.titre || '').includes(' — ') ? t.titre.split(' — ').slice(1).join(' — ').trim() : '';
+  // Dernière application du même produit dans la même salle (sinon ailleurs) : quantités proposées
+  const precedentes = S.d.taches.filter(x => x.id !== t.id && x.type === 'Foliaire' && lireAppli(x) &&
+    (!produit || lireAppli(x).produit.toLowerCase() === produit.toLowerCase())).sort((a, b) => (a.faitLe || '') < (b.faitLe || '') ? 1 : -1);
+  const der = lireAppli(precedentes.find(x => x.salle === t.salle) || precedentes[0]) || {};
+  open('<h3>Foliaire fait<button class="icon-btn" id="x">✕</button></h3>' +
+    '<div>' + esc(t.salle) + ' — ' + esc(t.titre || t.type) + '</div>' +
+    '<label>Produit</label><input type="text" id="g-prod" maxlength="60" value="' + esc(produit || der.produit || '') + '">' +
+    '<label>Quantité de produit</label><div class="inline"><input type="text" inputmode="decimal" id="g-qte" style="flex:1" value="' + (der.quantite ? nombreFr(der.quantite) : '') + '">' +
+    '<select id="g-unite" style="width:auto">' + opts(UNITES_FOLIAIRE, der.unite || 'ml') + '</select></div>' +
+    '<label>Volume de bouillie (L)</label><input type="text" inputmode="decimal" id="g-bouillie" value="' + (der.bouillie ? nombreFr(der.bouillie) : '') + '">' +
+    '<div class="meta">Inscrit au registre de culture GACP : Notes, Intrants par et volume de bouillie.</div>' +
+    '<div class="err" id="g-err"></div>' +
+    '<div class="foot"><button class="btn" id="g-no">Fermer</button><button class="btn pri" id="g-ok">✓ Fait</button></div>');
+  $('x').onclick = $('g-no').onclick = close;
+  $('g-ok').onclick = () => {
+    const nb = id => { const n = parseFloat($(id).value.replace(',', '.').replace(/\s/g, '')); return isFinite(n) && n > 0 ? n : 0; };
+    const appli = { produit: $('g-prod').value.trim(), quantite: nb('g-qte'), unite: $('g-unite').value, bouillie: nb('g-bouillie') };
+    if (!appli.produit) return $('g-err').textContent = 'Indiquez le produit.';
+    if (!appli.quantite) return $('g-err').textContent = 'Indiquez la quantité de produit.';
+    if (!appli.bouillie) return $('g-err').textContent = 'Indiquez le volume de bouillie.';
+    close();
+    enfiler('changerStatut', { id: t.id, statut: 'fait', appli });
+    toast('Marqué comme fait — sera inscrit au registre');
+  };
 }
 
 function formAnnulTache(t) {
