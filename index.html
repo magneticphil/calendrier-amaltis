@@ -193,7 +193,7 @@
 const COUL = {
   'Amendement':'#8a5a2b', 'Top-dress':'#c08a3e', 'Thé / inoculant':'#2e8b57', 'Foliaire':'#0d9488', 'Transplantation':'#3b6fb6',
   'Bascule 12/12':'#d97706', 'Deleaf':'#6b8e23', 'Filet':'#4338ca', 'Défoliation':'#6b8e23', 'Récolte':'#b91c1c', 'Post-prod':'#9a3412', 'Échantillon sol':'#7c3aed', 'Leaf test':'#a16207',
-  'Bouturage':'#db2777', 'Lutte intégrée':'#0e7490', 'Général':'#0f766e', 'Entretien':'#64748b', 'Nettoyage':'#0891b2', 'Autre':'#475569'
+  'Bouturage':'#db2777', 'Lutte intégrée':'#0e7490', 'Général':'#0f766e', 'Entretien':'#64748b', 'Nettoyage':'#0891b2', 'Climat':'#e11d48', 'Autre':'#475569'
 };
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 const JOURS = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
@@ -403,7 +403,7 @@ const JP_TYPES = {
   'Deleaf':'下葉取り', 'Défoliation':'摘葉', 'Récolte':'収穫', 'Transplantation':'定植', 'Bouturage':'挿し木', 'Filet':'ネット設置',
   'Foliaire':'葉面散布', 'Top-dress':'トップドレス（追肥）', 'Amendement':'土壌改良', 'Thé / inoculant':'堆肥茶・微生物資材',
   'Échantillon sol':'土壌サンプル', 'Leaf test':'葉分析', 'Lutte intégrée':'総合的病害虫管理', 'Bascule 12/12':'光周期の切替',
-  'Post-prod':'収穫後作業', 'Général':'一般作業', 'Entretien':'メンテナンス', 'Nettoyage':'洗浄・清掃', 'Autre':'その他',
+  'Post-prod':'収穫後作業', 'Général':'一般作業', 'Entretien':'メンテナンス', 'Nettoyage':'洗浄・清掃', 'Climat':'環境設定', 'Autre':'その他',
 };
 const enJaponais = () => S.d && JAPONAIS.includes(String(S.d.moi || '').toLowerCase());
 function jpTitre(t, etat) {
@@ -678,8 +678,8 @@ function card(t, withDate) {
     (reportee ? '<span class="late">↪ reportée du ' + shortDate(t.prevue) + '</span>' : '') +
     (t.serie ? '<span>↻ série</span>' : '') + (t.auto ? '<span>⚙ auto</span>' : '') +
     (t.visible ? '<span class="vis">🔒 ' + esc(t.visible) + '</span>' : '') + '</div>' +
-    (t.details && !t.auto ? '<div class="det">' + esc(t.details) + '</div>' : '') +
-    '<div class="meta">' + esc((t.auto && t.details ? t.details + ' · ' : '') + meta) + '</div>' +
+    (t.details && (!t.auto || t.type === 'Climat') ? '<div class="det">' + esc(t.details) + '</div>' : '') +
+    '<div class="meta">' + esc((t.auto && t.details && t.type !== 'Climat' ? t.details + ' · ' : '') + meta) + '</div>' +
     (t.statut === 'annulée' ? '<div class="acts">' + (S.d.admin ? '<button class="btn" data-a="restore" data-id="' + t.id + '">↺ Rétablir</button>' : '') + '</div></div></div>' :
     '<div class="acts">' +
       (t.statut === 'fait' ? '<button class="btn" data-a="undo" data-id="' + t.id + '">Remettre à faire</button>'
