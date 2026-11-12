@@ -112,6 +112,12 @@
   .tabs { position:fixed; left:0; right:0; bottom:0; z-index:6; display:flex; background:rgba(255,255,255,.96); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
   .tabs button { flex:1; border:0; background:transparent; padding:10px 0 12px; font-size:13px; color:var(--mute); }
   .tabs button.on { color:var(--acc); font-weight:600; }
+  .tabs .pastille { display:inline-block; min-width:16px; padding:0 4px; margin-left:3px; border-radius:999px; background:#dc2626; color:#fff; font-size:11px; font-weight:700; line-height:16px; }
+  .msg { background:var(--card); border-radius:12px; padding:10px 12px; margin-bottom:8px; box-shadow:0 1px 2px rgba(0,0,0,.04); border-left:4px solid var(--line); }
+  .msg.nouveau { border-left-color:#dc2626; }
+  .msg.epingle { border-left-color:var(--acc); }
+  .msg .txt { white-space:pre-wrap; font-size:15px; color:var(--ink); }
+  .msg .qui { font-size:12px; color:var(--mute); margin-bottom:4px; }
   .fab { position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom) + 66px); z-index:7; width:56px; height:56px; border-radius:50%; border:0; background:var(--acc); color:#fff; font-size:30px; line-height:56px; box-shadow:0 4px 12px rgba(0,0,0,.2); }
 
   /* Panneau modal */
@@ -176,12 +182,14 @@
     <section id="v-liste" class="hidden"></section>
     <section id="v-cycles" class="hidden"></section>
     <section id="v-acces" class="hidden"></section>
+    <section id="v-msg" class="hidden"></section>
   </main>
   <button class="fab" id="fab" aria-label="Ajouter">+</button>
   <nav class="tabs">
     <button data-v="cal" class="on">Calendrier</button>
     <button data-v="liste">À venir</button>
     <button data-v="cycles">Cycles</button>
+    <button data-v="msg" id="tab-msg">Babillard</button>
     <button data-v="acces" id="tab-acces" class="hidden">Accès</button>
   </nav>
 </div>
@@ -276,6 +284,7 @@ function jourDuReport(today) { let d = today; while (wd(d) > 4) d = addD(d, 1); 
 /** Applique une action en attente à la liste des tâches (même règle que le serveur ; sans effet si déjà appliquée). */
 function appliquerAction(taches, it) {
   const T = S.d.today, moi = S.d.moi, a = it.a;
+  if (it.fn === 'publierMessage' || it.fn === 'actionMessage') return appliquerMessage(it);
   const find = id => taches.find(x => x.id === id);
   if (it.fn === 'changerStatut') {
     const c = find(a.id); if (!c || c.statut === a.statut || c.statut === 'annulée') return;
@@ -318,6 +327,8 @@ function appliquerAction(taches, it) {
 function superposerFile() { if (!S.d || !S.d.taches) return; fileLire().forEach(it => { try { appliquerAction(S.d.taches, it); } catch (e) {} }); }
 const ARGS_ENVOI = {
   changerStatut: (a, req) => [a.id, a.statut, a.motif || '', !!a.serie, true, req, a.appli || null],
+  publierMessage: (a, req) => [a, req],
+  actionMessage: (a, req) => [a.ids, a.action, req],
   retablirTache: (a, req) => [a.id, true, req],
   enregistrerTache: (a, req) => [a, true, req],
 };
@@ -331,7 +342,7 @@ function enfiler(fn, a) {
   return it;
 }
 // Refus de contenu : définitifs. Tout le reste (réseau, lenteur ou panne de Google, verrou, code) est réessayé plus tard.
-const REFUS_DEFINITIF = /Type de tâche inconnu|Tâche introuvable|annulée et ne peut plus|annulée entre-temps|Choisissez au moins une salle|Statut invalide|motif est requis|Réservé à l|Élément introuvable|Salle inconnue|date invalide|Aucun foliaire|Action inconnue|Foliaire : produit/i;
+const REFUS_DEFINITIF = /Type de tâche inconnu|Tâche introuvable|annulée et ne peut plus|annulée entre-temps|Choisissez au moins une salle|Statut invalide|motif est requis|Réservé à l|Élément introuvable|Salle inconnue|date invalide|Aucun foliaire|Action inconnue|Foliaire : produit|Message vide/i;
 let envoiEnCours = false, envoiMinuterie = null, envoiDelai = 3000;
 function planifierEnvoi(ms) { clearTimeout(envoiMinuterie); envoiMinuterie = setTimeout(viderFile, ms); }
 async function viderFile() {
@@ -362,6 +373,8 @@ async function viderFile() {
   }
 }
 function libelleAction(it) {
+  if (it.fn === 'publierMessage') return 'message — ' + String(it.a.texte || '').slice(0, 40);
+  if (it.fn === 'actionMessage') return 'babillard — ' + it.a.action;
   const a = it.a, t = S.d && S.d.taches.find(x => x.id === a.id), nom = t ? (t.titre || t.type) + ' · ' + t.salle : (a.titre || a.type || 'tâche');
   if (it.fn === 'changerStatut') return (a.statut === 'fait' ? 'fait' : a.statut === 'annulée' ? 'annulation' : 'remise à faire') + ' — ' + nom;
   if (it.fn === 'retablirTache') return 'rétablissement — ' + nom;
@@ -479,6 +492,7 @@ function readCache() { const c = load(cacheKey()); return c && c.v === CACHE_V &
 function apply(d) {
   const oldToday = S.d && S.d.today;
   if(d.delta){
+    if (d.messages) S.d.messages = d.messages;
     const removed=new Set(d.removed||[]), changed=new Map(d.taches.map(t=>[t.id,t]));
     S.d.taches=S.d.taches.filter(t=>!removed.has(t.id)).map(t=>{const n=changed.get(t.id);changed.delete(t.id);return n||t;});
     changed.forEach(t=>S.d.taches.push(t)); S.d.today=d.today;
@@ -544,7 +558,7 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
   render(); window.scrollTo(0, 0);
 });
-$('fab').onclick = () => S.vue === 'cycles' ? formCycle(null, S.salle !== 'Toutes' ? S.salle : null) : formTache(null, S.vue === 'cal' ? S.jour : S.d.today);
+$('fab').onclick = () => S.vue === 'msg' ? formMessage() : S.vue === 'cycles' ? formCycle(null, S.salle !== 'Toutes' ? S.salle : null) : formTache(null, S.vue === 'cal' ? S.jour : S.d.today);
 
 function render() {
   $('filtre').innerHTML = ['Toutes'].concat(S.d.salles).map(s =>
@@ -553,9 +567,11 @@ function render() {
   $('tab-acces').classList.toggle('hidden', !S.d.admin);
   if (S.vue === 'acces' && !S.d.admin) S.vue = 'cal';
   $('fab').classList.toggle('hidden', S.vue === 'acces');
-  $('filtre').classList.toggle('hidden', S.vue === 'acces');
-  ['cal', 'liste', 'cycles', 'acces'].forEach(v => $('v-' + v).classList.toggle('hidden', v !== S.vue));
-  if (S.vue === 'cal') renderCal(); else if (S.vue === 'liste') renderListe(); else if (S.vue === 'acces') renderAcces(); else renderCycles();
+  $('filtre').classList.toggle('hidden', S.vue === 'acces' || S.vue === 'msg');
+  ['cal', 'liste', 'cycles', 'acces', 'msg'].forEach(v => $('v-' + v).classList.toggle('hidden', v !== S.vue));
+  const nonLus = messagesNonLus().length;
+  $('tab-msg').innerHTML = 'Babillard' + (nonLus ? '<span class="pastille">' + nonLus + '</span>' : '');
+  if (S.vue === 'cal') renderCal(); else if (S.vue === 'liste') renderListe(); else if (S.vue === 'acces') renderAcces(); else if (S.vue === 'msg') renderMessages(); else renderCycles();
 }
 
 /* ---------- Vue mois ---------- */
@@ -790,11 +806,12 @@ function visBloc(cur) {
     autres.map(n => '<label><input type="checkbox" value="' + esc(n) + '"' + (sel.includes(n) ? ' checked' : '') + '><span>' + esc(n) + '</span></label>').join('') +
     '</div><div class="meta" id="f-vis-note"></div>';
 }
-function visBind() {
+function visBind(objet) {
   const box = $('f-vis'); if (!box) return;
+  objet = objet || 'cette tâche';
   const all = box.querySelector('input[value="*"]');
   const noms = [...box.querySelectorAll('input:not([value="*"])')];
-  const note = () => { $('f-vis-note').textContent = all.checked ? 'Tous les employés voient cette tâche.'
+  const note = () => { $('f-vis-note').textContent = all.checked ? 'Tous les employés voient ' + objet + '.'
     : 'Seulement vous' + (noms.some(i => i.checked) ? ', ' + noms.filter(i => i.checked).map(i => i.value).join(', ') : '') + ' et l’admin.'; };
   all.onchange = () => { if (all.checked) noms.forEach(i => { i.checked = false; }); else if (!noms.some(i => i.checked)) all.checked = true; note(); };
   noms.forEach(i => i.onchange = () => { all.checked = !noms.some(x => x.checked); note(); });
@@ -847,6 +864,79 @@ function formFoliaire(t) {
     close();
     enfiler('changerStatut', { id: t.id, statut: 'fait', appli });
     toast('Marqué comme fait — sera inscrit au registre');
+  };
+}
+
+/* ---------- Babillard : messages à l'équipe (sans date ni salle) ---------- */
+const reqNorm = r => String(r || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
+const msgActif = m => !m.archive;
+function messagesNonLus() { return (S.d && S.d.messages || []).filter(m => msgActif(m) && m.auteur !== S.d.moi && !m.lu.includes(S.d.moi)); }
+function appliquerMessage(it) {
+  const a = it.a, moi = S.d.moi; S.d.messages = S.d.messages || [];
+  if (it.fn === 'publierMessage') {
+    const id = 'm' + reqNorm(it.id).slice(0, 15);
+    if (S.d.messages.some(m => m.id === id)) return;
+    S.d.messages.push({ id, auteur: moi, le: it.at, texte: String(a.texte || '').trim(), pour: (a.pour || []).join(', '), epingle: !!a.epingle,
+      archive: false, expire: a.expire || '', lu: [moi], modifPar: '', modifLe: '' });
+    return;
+  }
+  S.d.messages.filter(m => a.ids.includes(m.id)).forEach(m => {
+    if (a.action === 'lu') { if (!m.lu.includes(moi)) m.lu.push(moi); return; }
+    if (a.action === 'epingler') m.epingle = true;
+    if (a.action === 'desepingler') m.epingle = false;
+    if (a.action === 'archiver') m.archive = true;
+    if (a.action === 'desarchiver') { m.archive = false; if (m.expire && m.expire < S.d.today) m.expire = ''; }
+    m.modifPar = moi; m.modifLe = it.at;
+  });
+}
+function renderMessages() {
+  const tous = (S.d.messages || []).slice().sort((a, b) => (b.le || '').localeCompare(a.le || ''));
+  const nonLus = new Set(messagesNonLus().map(m => m.id));
+  const actifs = tous.filter(msgActif), archives = tous.filter(m => !msgActif(m));
+  const carte = m => {
+    const moiAuteur = m.auteur === S.d.moi, gere = moiAuteur || S.d.admin;
+    const autresLu = m.lu.filter(n => n !== m.auteur);
+    return '<div class="msg' + (nonLus.has(m.id) ? ' nouveau' : '') + (m.epingle && !m.archive ? ' epingle' : '') + '">' +
+      '<div class="qui">' + (m.epingle && !m.archive ? '📌 ' : '') + '<b>' + esc(m.auteur) + '</b> · ' + esc(m.le) +
+      (m.pour ? ' · 🔒 pour ' + esc(m.pour) : ' · toute l’équipe') + (m.expire && !m.archive ? ' · jusqu’au ' + esc(shortDate(m.expire)) : '') + '</div>' +
+      '<div class="txt">' + esc(m.texte) + '</div>' +
+      (gere ? '<div class="meta">' + (autresLu.length ? 'Lu par ' + esc(autresLu.join(', ')) : 'Pas encore lu') + '</div>' +
+        '<div class="acts">' + (m.archive
+          ? '<button class="btn" data-m="desarchiver" data-id="' + esc(m.id) + '">↺ Remettre au babillard</button>'
+          : '<button class="btn" data-m="' + (m.epingle ? 'desepingler' : 'epingler') + '" data-id="' + esc(m.id) + '">' + (m.epingle ? 'Détacher' : '📌 Épingler') + '</button>' +
+            '<button class="btn" data-m="archiver" data-id="' + esc(m.id) + '">Archiver</button>') + '</div>' : '') +
+      '</div>';
+  };
+  const ordre = (a, b) => (b.epingle - a.epingle) || (b.le || '').localeCompare(a.le || '');
+  $('v-msg').innerHTML = '<h2>Babillard <small>(' + actifs.length + ')</small></h2>' +
+    (actifs.length ? actifs.sort(ordre).map(carte).join('') : '<div class="empty">Aucun message. Touchez « + » pour écrire à l’équipe.</div>') +
+    (archives.length ? '<details style="margin-top:14px"><summary class="meta">Archives (' + archives.length + ')</summary>' + archives.map(carte).join('') + '</details>' : '');
+  $('v-msg').querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
+    enfiler('actionMessage', { ids: [b.dataset.id], action: b.dataset.m });
+    toast({ epingler: 'Épinglé', desepingler: 'Détaché', archiver: 'Archivé', desarchiver: 'Remis au babillard' }[b.dataset.m]);
+  });
+  // Ouvrir le babillard marque les nouveaux messages comme lus (la bordure rouge reste jusqu'au prochain affichage)
+  if (nonLus.size && !S.msgLecture) {
+    S.msgLecture = true;
+    setTimeout(() => { S.msgLecture = false; const ids = messagesNonLus().map(m => m.id); if (ids.length && S.vue === 'msg') enfiler('actionMessage', { ids, action: 'lu' }); }, 1500);
+  }
+}
+function formMessage() {
+  open('<h3>Message à l’équipe<button class="icon-btn" id="x">✕</button></h3>' +
+    '<label>Message</label><textarea id="g-txt" rows="5" maxlength="2000" placeholder="Ex. : plus de Zerotol, commande passée lundi"></textarea>' +
+    visBloc('').replace('<label>Visible par</label>', '<label>Pour</label>') +
+    '<label>Afficher jusqu’au (facultatif)</label><input type="date" id="g-exp" min="' + S.d.today + '">' +
+    '<div class="pills" style="margin-top:10px"><label><input type="checkbox" id="g-epi"><span>📌 Épingler en haut</span></label></div>' +
+    '<div class="err" id="g-err"></div>' +
+    '<div class="foot"><button class="btn" id="g-no">Fermer</button><button class="btn pri" id="g-ok">Publier</button></div>');
+  visBind('ce message');
+  $('x').onclick = $('g-no').onclick = close;
+  $('g-ok').onclick = () => {
+    const texte = $('g-txt').value.trim();
+    if (!texte) return $('g-err').textContent = 'Écrivez un message.';
+    close();
+    enfiler('publierMessage', { texte, pour: visLire(), epingle: $('g-epi').checked, expire: $('g-exp').value || '' });
+    toast('Message publié');
   };
 }
 
