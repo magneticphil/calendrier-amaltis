@@ -638,22 +638,34 @@ const byDate = (a, b) => a.date.localeCompare(b.date) || byType(a, b);
 
 /* ---------- Vue À venir ---------- */
 function renderListe() {
-  const T = S.d.today, all = visibles();
+  const T = S.d.today, tout = visibles();
+  // Filtre par type de tâche (types présents dans la liste) ; « Plus tard » montre aussi les tâches au-delà de 30 jours
+  const typesPresents = [...new Set(tout.filter(t => t.statut === 'à faire' || t.date >= addD(T, -7)).map(t => t.type))]
+    .sort((a, b) => (S.d.types.indexOf(a) + 1 || 99) - (S.d.types.indexOf(b) + 1 || 99));
+  if (S.typeListe === undefined) S.typeListe = load('cal_type_liste') || 'Tous';
+  if (S.typeListe !== 'Tous' && !typesPresents.includes(S.typeListe)) S.typeListe = 'Tous';
+  const all = S.typeListe === 'Tous' ? tout : tout.filter(t => t.type === S.typeListe);
   const afaire = all.filter(t => t.statut === 'à faire');
   const groupes = [
     ['En retard', afaire.filter(t => t.date < T), 'sec-warn'],
     ["Aujourd'hui", all.filter(t => t.date === T)],
     ['7 prochains jours', afaire.filter(t => t.date > T && t.date <= addD(T, 7))],
     ['Jusqu’à 30 jours', afaire.filter(t => t.date > addD(T, 7) && t.date <= addD(T, 30))],
-    ['Faites ces 7 derniers jours', all.filter(t => t.statut === 'fait' && t.date < T && t.date >= addD(T, -7))],
   ];
+  if (S.typeListe !== 'Tous') groupes.push(['Plus tard', afaire.filter(t => t.date > addD(T, 30))]);
+  groupes.push(['Faites ces 7 derniers jours', all.filter(t => t.statut === 'fait' && t.date < T && t.date >= addD(T, -7))]);
   if (S.d.admin) groupes.push(['Annulées ces 7 derniers jours', S.d.taches.filter(t => t.statut === 'annulée' && t.creePar !== 'registre' &&
+    (S.typeListe === 'Tous' || t.type === S.typeListe) &&
     (S.salle === 'Toutes' || t.salle === S.salle) && String(t.modifLe || '').slice(0, 10) >= addD(T, -7))]);
-  $('v-liste').innerHTML = groupes.map(([titre, ts, cls]) => {
+  const puce = ty => ty === 'Tous' ? '' : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:' + (COUL[ty] || '#999') + '"></span>';
+  $('v-liste').innerHTML = (typesPresents.length > 1 ? '<div class="chips" id="f-type-liste">' + ['Tous'].concat(typesPresents).map(ty =>
+    '<button class="chip' + (ty === S.typeListe ? ' on' : '') + '" data-ty="' + esc(ty) + '">' + puce(ty) + esc(ty === 'Tous' ? 'Tous les types' : ty) + '</button>').join('') + '</div>' : '') +
+    groupes.map(([titre, ts, cls]) => {
     if (!ts.length && titre !== "Aujourd'hui") return '';
     return '<h2 class="' + (cls || '') + '">' + titre + ' <small>(' + ts.length + ')</small></h2>' +
       (ts.length ? ts.sort(byDate).map(t => card(t, true)).join('') : '<div class="empty">Rien de prévu.</div>');
   }).join('');
+  $('v-liste').querySelectorAll('[data-ty]').forEach(c => c.onclick = () => { S.typeListe = c.dataset.ty; store('cal_type_liste', S.typeListe); renderListe(); });
   bindCards($('v-liste'));
 }
 
