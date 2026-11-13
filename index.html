@@ -838,7 +838,10 @@ function visLire() {
 const UNITES_FOLIAIRE = ['ml', 'L', 'g', 'kg'];
 const lireAppli = t => { try { return t && t.appli ? JSON.parse(t.appli) : null; } catch (e) { return null; } };
 const nombreFr = n => String(n).replace('.', ',');
-function texteAppli(t) { const a = lireAppli(t); return a ? a.produit + ' ' + nombreFr(a.quantite) + ' ' + a.unite + ' · bouillie ' + nombreFr(a.bouillie) + ' L' : ''; }
+function texteAppli(t) {
+  const a = lireAppli(t); if (!a) return '';
+  return [a.produit + (a.quantite ? ' ' + nombreFr(a.quantite) + (a.unite ? ' ' + a.unite : '') : ''), a.bouillie ? 'bouillie ' + nombreFr(a.bouillie) + ' L' : ''].filter(Boolean).join(' · ');
+}
 function formFoliaire(t) {
   const produit = (t.titre || '').includes(' — ') ? t.titre.split(' — ').slice(1).join(' — ').trim() : '';
   // Dernière application du même produit dans la même salle (sinon ailleurs) : quantités proposées
