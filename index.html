@@ -118,7 +118,7 @@
   .msg.epingle { border-left-color:var(--acc); }
   .msg .txt { white-space:pre-wrap; font-size:15px; color:var(--ink); }
   .msg .qui { font-size:12px; color:var(--mute); margin-bottom:4px; }
-  .fab-menage { position:fixed; right:22px; bottom:calc(env(safe-area-inset-bottom) + 132px); z-index:7; height:40px; padding:0 14px; border-radius:20px; border:0; background:#0e7490; color:#fff; font-size:14px; font-weight:600; box-shadow:0 3px 10px rgba(0,0,0,.2); }
+  .fab-menage { position:fixed; left:18px; bottom:calc(env(safe-area-inset-bottom) + 72px); z-index:7; width:44px; height:44px; border-radius:50%; border:0; background:#0e7490; color:#fff; font-size:22px; line-height:44px; padding:0; box-shadow:0 3px 10px rgba(0,0,0,.2); }
   .fab { position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom) + 66px); z-index:7; width:56px; height:56px; border-radius:50%; border:0; background:var(--acc); color:#fff; font-size:30px; line-height:56px; box-shadow:0 4px 12px rgba(0,0,0,.2); }
 
   /* Panneau modal */
@@ -185,7 +185,7 @@
     <section id="v-acces" class="hidden"></section>
     <section id="v-msg" class="hidden"></section>
   </main>
-  <button class="fab-menage" id="fab-menage" aria-label="Inscrire un ménage fait">🧽 Ménage fait</button>
+  <button class="fab-menage" id="fab-menage" aria-label="Inscrire un ménage fait" title="Ménage fait">🧽</button>
   <button class="fab" id="fab" aria-label="Ajouter">+</button>
   <nav class="tabs">
     <button data-v="cal" class="on">Calendrier</button>
