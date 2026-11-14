@@ -118,7 +118,7 @@
   .msg.epingle { border-left-color:var(--acc); }
   .msg .txt { white-space:pre-wrap; font-size:15px; color:var(--ink); }
   .msg .qui { font-size:12px; color:var(--mute); margin-bottom:4px; }
-  .tabs button.tab-menage { flex:0 0 58px; font-size:22px; padding:6px 0 8px; color:inherit; }
+  .btn-menage { display:block; margin-top:8px; font-size:22px; line-height:1; padding:6px 12px; }
   .fab { position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom) + 66px); z-index:7; width:56px; height:56px; border-radius:50%; border:0; background:var(--acc); color:#fff; font-size:30px; line-height:56px; box-shadow:0 4px 12px rgba(0,0,0,.2); }
 
   /* Panneau modal */
@@ -192,7 +192,6 @@
     <button data-v="cycles">Cycles</button>
     <button data-v="msg" id="tab-msg">Babillard</button>
     <button data-v="acces" id="tab-acces" class="hidden">Accès</button>
-    <button class="tab-menage" id="fab-menage" aria-label="Inscrire un ménage fait" title="Ménage fait">🧽</button>
   </nav>
 </div>
 
@@ -560,7 +559,6 @@ document.querySelectorAll('.tabs button[data-v]').forEach(b => b.onclick = () =>
   document.querySelectorAll('.tabs button[data-v]').forEach(x => x.classList.toggle('on', x === b));
   render(); window.scrollTo(0, 0);
 });
-$('fab-menage').onclick = () => formMenage();
 $('fab').onclick = () => S.vue === 'msg' ? formMessage() : S.vue === 'cycles' ? formCycle(null, S.salle !== 'Toutes' ? S.salle : null) : formTache(null, S.vue === 'cal' ? S.jour : S.d.today);
 
 function render() {
@@ -570,7 +568,6 @@ function render() {
   $('tab-acces').classList.toggle('hidden', !S.d.admin);
   if (S.vue === 'acces' && !S.d.admin) S.vue = 'cal';
   $('fab').classList.toggle('hidden', S.vue === 'acces');
-  $('fab-menage').classList.toggle('hidden', !(S.vue === 'cal' || S.vue === 'liste') || !(S.d.types || []).includes('Nettoyage'));
   $('filtre').classList.toggle('hidden', S.vue === 'acces' || S.vue === 'msg');
   ['cal', 'liste', 'cycles', 'acces', 'msg'].forEach(v => $('v-' + v).classList.toggle('hidden', v !== S.vue));
   const nonLus = messagesNonLus().length;
@@ -629,11 +626,13 @@ function renderCal() {
     if (ann.length) h += '<h2 class="sub-ann">Annulées ce jour <small>(' + ann.length + ')</small></h2>' + ann.map(t => card(t, false)).join('');
   }
   h += '<button class="btn" id="addday" style="margin-top:4px">+ Ajouter une tâche ce jour</button>';
+  if ((S.d.types || []).includes('Nettoyage')) h += '<button class="btn btn-menage" id="menage-jour" aria-label="Inscrire un ménage fait" title="Ménage fait">🧽</button>';
   $('v-cal').innerHTML = h;
   $('mprev').onclick = () => { S.mois = addD(S.mois + '-01', -1).slice(0, 7); renderCal(); };
   $('mnext').onclick = () => { S.mois = addD(S.mois + '-01', 32).slice(0, 7); renderCal(); };
   $('v-cal').querySelectorAll('.day').forEach(c => c.onclick = () => { S.jour = c.dataset.d; if (S.jour.slice(0, 7) !== S.mois) S.mois = S.jour.slice(0, 7); renderCal(); });
   $('addday').onclick = () => formTache(null, S.jour);
+  if ($('menage-jour')) $('menage-jour').onclick = () => formMenage(S.jour);
   bindCards($('v-cal'));
 }
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
@@ -787,11 +786,12 @@ function formTache(t, date) {
    rien n'est planifié ni reporté. Chaque passage (ex. plancher lavé plusieurs fois par semaine) = une ligne,
    reprise dans le registre des opérations de la salle (qui, quand, produit). */
 const MENAGE_PRODUIT = 'BioEase';
-function formMenage() {
+function formMenage(jour) {
+  const date = jour && jour < S.d.today ? jour : S.d.today;  // jour passé : ménage oublié inscrit à sa date ; jamais dans le futur
   const sal = S.salle !== 'Toutes' ? S.salle : null;
   const produit = load('cal_menage_produit') || MENAGE_PRODUIT;
   open('<h3>Ménage fait<button class="icon-btn" id="x">✕</button></h3>' +
-    '<div class="meta">Cochez les salles lavées. Le ménage est inscrit comme fait aujourd\'hui, à votre nom.</div>' +
+    '<div class="meta">Cochez les salles lavées. Le ménage est inscrit comme fait ' + (date === S.d.today ? 'aujourd\'hui' : 'le ' + shortDate(date)) + ', à votre nom.</div>' +
     '<label>Salle(s)</label><div class="pills">' + S.d.salles.map(s =>
       '<label><input type="checkbox" name="ms" value="' + esc(s) + '"' + (s === sal ? ' checked' : '') + '><span>' + esc(s) + '</span></label>').join('') + '</div>' +
     '<label>Travail</label><input type="text" id="m-titre" maxlength="120" value="Lavage du plancher">' +
@@ -807,7 +807,7 @@ function formMenage() {
     const titre = ($('m-titre').value.trim() || 'Ménage') + (prod ? ' — ' + prod : '');
     store('cal_menage_produit', prod || MENAGE_PRODUIT);
     close();
-    const it = enfiler('enregistrerTache', { salles, date: S.d.today, type: 'Nettoyage', titre, details: [prod ? 'Produit : ' + prod : '', rem].filter(Boolean).join(' · '), visible: [] });
+    const it = enfiler('enregistrerTache', { salles, date, type: 'Nettoyage', titre, details: [prod ? 'Produit : ' + prod : '', rem].filter(Boolean).join(' · '), visible: [] });
     salles.forEach((sl, i) => enfiler('changerStatut', { id: idOp(it.id, i), statut: 'fait' }));
     toast('Ménage inscrit — ' + salles.length + ' salle' + (salles.length > 1 ? 's' : ''));
   };
