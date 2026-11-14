@@ -277,8 +277,8 @@ function nouvelId() {
   let r = ''; for (let i = 0; i < 32; i++) r += Math.floor(Math.random() * 16).toString(16); return r;
 }
 // Mêmes ID que le serveur pour les tâches créées (idOp_ / serieOp_ dans Code.gs)
-const idOp = (req, i) => req.slice(0, 8) + ('0' + i.toString(36)).slice(-2);
-const serieOp = (req, k) => req.slice(0, 7) + 's' + ('0' + k.toString(36)).slice(-2);
+const idOp = (req, i) => reqNorm(req) + ('0' + i.toString(36)).slice(-2);
+const serieOp = (req, k) => reqNorm(req) + 's' + ('0' + k.toString(36)).slice(-2);
 function horodatage() { const n = new Date(), z = x => String(x).padStart(2, '0'); return S.d.today + ' ' + z(n.getHours()) + ':' + z(n.getMinutes()); }
 function jourDuReport(today) { let d = today; while (wd(d) > 4) d = addD(d, 1); return d; }  // approximation : le serveur corrige (fériés)
 /** Applique une action en attente à la liste des tâches (même règle que le serveur ; sans effet si déjà appliquée). */
