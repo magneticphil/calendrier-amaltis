@@ -131,6 +131,9 @@
   .msg .txt { white-space:pre-wrap; font-size:15px; color:var(--ink); }
   .msg .qui { font-size:12px; color:var(--mute); margin-bottom:4px; }
   .btn-menage { display:block; margin-top:8px; font-size:22px; line-height:1; padding:6px 12px; }
+  .rapides { display:flex; gap:8px; }
+  .btn-depistage { display:block; margin-top:8px; line-height:0; padding:5px 10px; color:var(--ink); }
+  .btn-depistage svg { width:28px; height:28px; }
   .tabs .fab { position:absolute; right:12px; bottom:calc(100% + 8px); z-index:7; width:52px; height:52px; flex:none; border-radius:50%; border:0; background:var(--acc); color:#fff; font-size:28px; line-height:52px; padding:0; box-shadow:0 4px 12px rgba(0,0,0,.2); }
   .tabs .fab.hidden { display:none; }
 
@@ -640,13 +643,17 @@ function renderCal() {
     if (ann.length) h += '<h2 class="sub-ann">Annulées ce jour <small>(' + ann.length + ')</small></h2>' + ann.map(t => card(t, false)).join('');
   }
   h += '<button class="btn" id="addday" style="margin-top:4px">+ Ajouter une tâche ce jour</button>';
-  if ((S.d.types || []).includes('Nettoyage')) h += '<button class="btn btn-menage" id="menage-jour" aria-label="Inscrire un ménage fait" title="Ménage fait">🧽</button>';
+  h += '<div class="rapides">' +
+    ((S.d.types || []).includes('Nettoyage') ? '<button class="btn btn-menage" id="menage-jour" aria-label="Inscrire un ménage fait" title="Ménage fait">🧽</button>' : '') +
+    ((S.d.types || []).includes('Lutte intégrée') ? '<button class="btn btn-depistage" id="depistage-jour" aria-label="Inscrire un dépistage d’insectes" title="Dépistage insectes">' + ICONE_THRIPS + '</button>' : '') +
+    '</div>';
   $('v-cal').innerHTML = h;
   $('mprev').onclick = () => { S.mois = addD(S.mois + '-01', -1).slice(0, 7); renderCal(); };
   $('mnext').onclick = () => { S.mois = addD(S.mois + '-01', 32).slice(0, 7); renderCal(); };
   $('v-cal').querySelectorAll('.day').forEach(c => c.onclick = () => { S.jour = c.dataset.d; if (S.jour.slice(0, 7) !== S.mois) S.mois = S.jour.slice(0, 7); renderCal(); });
   $('addday').onclick = () => formTache(null, S.jour);
   if ($('menage-jour')) $('menage-jour').onclick = () => formMenage(S.jour);
+  if ($('depistage-jour')) $('depistage-jour').onclick = () => formDepistage(S.jour);
   bindCards($('v-cal'));
 }
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
@@ -824,6 +831,49 @@ function formMenage(jour) {
     const it = enfiler('enregistrerTache', { salles, date, type: 'Nettoyage', titre, details: [prod ? 'Produit : ' + prod : '', rem].filter(Boolean).join(' · '), visible: [] });
     salles.forEach((sl, i) => enfiler('changerStatut', { id: idOp(it.id, i), statut: 'fait' }));
     toast('Ménage inscrit — ' + salles.length + ' salle' + (salles.length > 1 ? 's' : ''));
+  };
+}
+
+/* ---------- Dépistage insectes (inscription rapide, après coup) ----------
+   Une tâche « Lutte intégrée » faite par salle cochée. La synchro l'inscrit au registre GACP de la salle :
+   « Dépistage ravageurs » (RAS / Observé / Traité), « Dépisté par » et, si quelque chose est vu, « Observations / écarts ». */
+const ICONE_THRIPS = '<svg viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round">' +
+  '<path d="M16 3.5c-.9 0-1.4.9-1.4 1.9 0 .7.3 1.2.7 1.5" stroke-width="1.4"/><path d="M14.6 4.2 12 1.5M17.4 4.2 20 1.5" stroke-width="1"/>' +
+  '<ellipse cx="16" cy="9" rx="1.9" ry="2.6" fill="currentColor" stroke="none"/>' +
+  '<path d="M16 11.2c-1.6 0-2.3 2-2.3 5.6 0 4.6.9 9.8 2.3 12.2 1.4-2.4 2.3-7.6 2.3-12.2 0-3.6-.7-5.6-2.3-5.6z" fill="currentColor" stroke="none"/>' +
+  '<path d="M14.6 11.5 5.5 22M17.4 11.5 26.5 22" stroke-width="1.1"/>' +
+  '<path d="M7 18.5l-1.6-.9M8.4 17l-1.6-.9M9.8 15.4l-1.6-.9M6.3 20.4l-1.5-.8M25 18.5l1.6-.9M23.6 17l1.6-.9M22.2 15.4l1.6-.9M25.7 20.4l1.5-.8" stroke-width=".8"/>' +
+  '<path d="M14.3 14 10 13M14.2 16.5 9.5 18.5M17.7 14 22 13M17.8 16.5 22.5 18.5" stroke-width="1"/></svg>';
+const RAVAGEURS = ['Thrips', 'Tétranyques', 'Pucerons', 'Aleurodes', 'Sciarides', 'Chenilles', 'Cicadelles', 'Oïdium', 'Botrytis', 'Autre'];
+function formDepistage(jour) {
+  const date = jour && jour < S.d.today ? jour : S.d.today;
+  const sal = S.salle !== 'Toutes' ? S.salle : null;
+  open('<h3>Dépistage insectes<button class="icon-btn" id="x">✕</button></h3>' +
+    '<div class="meta">Inscrit comme fait ' + (date === S.d.today ? 'aujourd\'hui' : 'le ' + shortDate(date)) + ', à votre nom, puis reporté au registre GACP de chaque salle.</div>' +
+    '<label>Salle(s) inspectée(s)</label><div class="pills">' + S.d.salles.map(s =>
+      '<label><input type="checkbox" name="ds" value="' + esc(s) + '"' + (s === sal ? ' checked' : '') + '><span>' + esc(s) + '</span></label>').join('') + '</div>' +
+    '<label>Résultat</label><div class="pills">' + [['RAS', 'Rien à signaler'], ['Observé', 'Détecté'], ['Traité', 'Détecté et traité']].map(([v, l], i) =>
+      '<label><input type="radio" name="dr" value="' + v + '"' + (i ? '' : ' checked') + '><span>' + l + '</span></label>').join('') + '</div>' +
+    '<div id="d-quoi" class="hidden"><label>Quoi ?</label><div class="pills">' + RAVAGEURS.map(r =>
+      '<label><input type="checkbox" name="dq" value="' + esc(r) + '"><span>' + esc(r) + '</span></label>').join('') + '</div></div>' +
+    '<label>Remarque (facultatif)</label><input type="text" id="d-det" maxlength="300" placeholder="ex. bord nord, 3 plants, faible pression…">' +
+    '<div class="err" id="d-err"></div>' +
+    '<div class="foot"><button class="btn" id="d-no">Fermer</button><button class="btn pri" id="d-ok">✓ Inscrire</button></div>');
+  const maj = () => $('d-quoi').classList.toggle('hidden', document.querySelector('input[name=dr]:checked').value === 'RAS');
+  document.querySelectorAll('input[name=dr]').forEach(i => i.onchange = maj);
+  $('x').onclick = $('d-no').onclick = close;
+  $('d-ok').onclick = () => {
+    const salles = [...document.querySelectorAll('input[name=ds]:checked')].map(i => i.value);
+    if (!salles.length) return $('d-err').textContent = 'Choisissez au moins une salle.';
+    const res = document.querySelector('input[name=dr]:checked').value;
+    const quoi = res === 'RAS' ? [] : [...document.querySelectorAll('input[name=dq]:checked')].map(i => i.value);
+    if (res !== 'RAS' && !quoi.length) return $('d-err').textContent = 'Indiquez ce qui a été détecté.';
+    const rem = $('d-det').value.trim();
+    const titre = 'Dépistage — ' + res + (quoi.length ? ' : ' + quoi.join(', ') : '');
+    close();
+    const it = enfiler('enregistrerTache', { salles, date, type: 'Lutte intégrée', titre, details: rem ? 'Remarque : ' + rem : '', visible: [] });
+    salles.forEach((sl, i) => enfiler('changerStatut', { id: idOp(it.id, i), statut: 'fait' }));
+    toast('Dépistage inscrit — ' + salles.length + ' salle' + (salles.length > 1 ? 's' : ''));
   };
 }
 
