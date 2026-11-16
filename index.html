@@ -714,7 +714,7 @@ function card(t, withDate) {
     : (t.creePar === 'auto' ? 'Planifiée automatiquement' : 'Planifié par ' + t.creePar) +
       (t.modifPar && t.modifPar !== 'auto' ? ' · modifié par ' + t.modifPar : '');
   return '<div class="card ' + t.statut + '"><div class="bar" style="background:' + (COUL[t.type] || '#999') + '"></div><div class="body">' +
-    '<div class="ttl">' + esc(t.salle) + ' — ' + esc(titreCarte) + '</div>' +
+    '<div class="ttl">' + esc(titreAvecRound(t.salle, titreCarte)) + '</div>' +
     (enJaponais() ? (j => j ? '<div class="jp" lang="ja">' + esc(j) + '</div>' : '')(jpTitre(t,
       trimEnCours ? '中・' + Math.max(1, jourTrim) + '日目' : deleafEnCours ? '・作業中（' + Math.max(1, jourDeleaf) + '日目）' : (trimFini || deleafFini) ? '・完了' : '')) : '') +
     '<div class="row1"><span class="badge" style="color:' + (COUL[t.type] || '#999') + '">' + esc(t.type) + '</span>' +
@@ -929,6 +929,12 @@ function formFoliaire(t) {
     enfiler('changerStatut', { id: t.id, statut: 'fait', appli });
     toast('Marqué comme fait — sera inscrit au registre');
   };
+}
+
+/* « Salle 6 » + « Debud — round 3 » → « Salle 6 round 3 — Debud » (le round suit la salle) */
+function titreAvecRound(salle, titre) {
+  const m = /\s+—\s+round\s+(\d+)\b/i.exec(titre || '');
+  return m ? salle + ' round ' + m[1] + ' — ' + titre.replace(m[0], '') : salle + ' — ' + titre;
 }
 
 /* ---------- Mode nuit ---------- */
