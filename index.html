@@ -495,10 +495,11 @@ async function rafraichirDepart() {
     await new Promise(r => setTimeout(r, 1500));
   }
 }
+let dernierRefresh = 0;
 async function refresh(quiet) {
   if(mutationPending||refreshPending||!$('ov').classList.contains('hidden')) return false;
   refreshPending=true; const revision=dataRevision, auth=S.auth;
-  try { const d=await run('charger',auth); if(revision===dataRevision&&auth===S.auth&&!mutationPending&&$('ov').classList.contains('hidden')){apply(d);if(!quiet)toast('À jour');return true;} return false; }
+  try { const d=await run('charger',auth); if(revision===dataRevision&&auth===S.auth&&!mutationPending&&$('ov').classList.contains('hidden')){apply(d);dernierRefresh=Date.now();if(!quiet)toast('À jour');return true;} return false; }
   catch(e){if(/code invalide/i.test(errMsg(e))){logout();return true;} if(revision===dataRevision&&!quiet)toast(errMsg(e)); return false;}
   finally{refreshPending=false;}
 }
@@ -568,7 +569,22 @@ $('logout').onclick = () => {
   if (confirm(n ? n + ' action(s) pas encore transmise(s) : elles partiront à votre prochaine connexion sur ce téléphone. Se déconnecter quand même ?' : 'Se déconnecter ?')) logout();
 };
 $('refresh').onclick = () => { refresh(); planifierEnvoi(0); };
-document.addEventListener('visibilitychange', () => { if (!document.hidden && S.d) { refresh(true); planifierEnvoi(300); } });
+// Toujours à jour : au retour dans l'app (avec réessais, le réseau du téléphone peut mettre quelques secondes à revenir),
+// au retour du réseau, et chaque minute tant que l'écran est allumé sur l'app (reporté si un formulaire est ouvert).
+const REFRESH_AUTO_MS = 60000;
+let departEnCours = false;
+async function rafraichirRetour() {
+  if (!S.d || departEnCours) return;
+  departEnCours = true; planifierEnvoi(300);
+  try { await rafraichirDepart(); } finally { departEnCours = false; }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) rafraichirRetour(); });
+window.addEventListener('pageshow', e => { if (e.persisted) rafraichirRetour(); });
+window.addEventListener('online', rafraichirRetour);
+setInterval(() => {
+  if (document.hidden || !S.d || departEnCours || navigator.onLine === false) return;
+  if (Date.now() - dernierRefresh >= REFRESH_AUTO_MS) refresh(true);
+}, 15000);
 
 /* ---------- Navigation ---------- */
 document.querySelectorAll('.tabs button[data-v]').forEach(b => b.onclick = () => {
