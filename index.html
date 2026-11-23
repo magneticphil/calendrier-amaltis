@@ -973,30 +973,46 @@ function texteAppli(t) {
   return [a.produit + (a.quantite ? ' ' + nombreFr(a.quantite) + (a.unite ? ' ' + a.unite : '') : ''), a.bouillie ? 'bouillie ' + nombreFr(a.bouillie) + ' L' : ''].filter(Boolean).join(' · ');
 }
 function formFoliaire(t) {
-  const produit = (t.titre || '').includes(' — ') ? t.titre.split(' — ').slice(1).join(' — ').trim() : '';
-  // Dernière application du même produit dans la même salle (sinon ailleurs) : quantités proposées
-  const precedentes = S.d.taches.filter(x => x.id !== t.id && x.type === 'Foliaire' && lireAppli(x) &&
-    (!produit || lireAppli(x).produit.toLowerCase() === produit.toLowerCase())).sort((a, b) => (a.faitLe || '') < (b.faitLe || '') ? 1 : -1);
+  // Produit : celui du titre « Foliaire — Produit » ; sinon le titre lui-même (ex. « Bioceres »), jamais celui d'un autre foliaire
+  const titre = (t.titre || '').trim();
+  const produit = titre.includes(' — ') ? titre.split(' — ').slice(1).join(' — ').trim()
+    : (titre && titre.toLowerCase() !== 'foliaire' ? titre : '');
+  // Quantités proposées : seulement la dernière application du MÊME produit (même salle d'abord), sinon champs vides
+  const precedentes = produit ? S.d.taches.filter(x => x.id !== t.id && x.type === 'Foliaire' && lireAppli(x) &&
+    (lireAppli(x).produit || '').toLowerCase() === produit.toLowerCase()).sort((a, b) => (a.faitLe || '') < (b.faitLe || '') ? 1 : -1) : [];
   const der = lireAppli(precedentes.find(x => x.salle === t.salle) || precedentes[0]) || {};
   open('<h3>Foliaire fait<button class="icon-btn" id="x">✕</button></h3>' +
     '<div>' + esc(t.salle) + ' — ' + esc(t.titre || t.type) + '</div>' +
-    '<label>Produit</label><input type="text" id="g-prod" maxlength="60" value="' + esc(produit || der.produit || '') + '">' +
+    '<label>Produit</label><input type="text" id="g-prod" maxlength="60" value="' + esc(produit) + '">' +
     '<label>Quantité de produit</label><div class="inline"><input type="text" inputmode="decimal" id="g-qte" style="flex:1" value="' + (der.quantite ? nombreFr(der.quantite) : '') + '">' +
-    '<select id="g-unite" style="width:auto">' + opts(UNITES_FOLIAIRE, der.unite || 'ml') + '</select></div>' +
+    '<select id="g-unite" style="width:auto"><option value="">unité</option>' + opts(UNITES_FOLIAIRE, der.unite || '') + '</select></div>' +
     '<label>Volume de bouillie (L)</label><input type="text" inputmode="decimal" id="g-bouillie" value="' + (der.bouillie ? nombreFr(der.bouillie) : '') + '">' +
-    '<div class="meta">Inscrit au registre de culture GACP : Notes, Intrants par et volume de bouillie.</div>' +
+    '<div class="meta">' + (der.quantite ? 'Valeurs proposées : dernière application de ce produit. Vérifiez-les.' : 'Inscrivez ce qui a réellement été appliqué.') + '</div>' +
+    '<div class="meta" id="g-recap" style="display:none"></div>' +
     '<div class="err" id="g-err"></div>' +
-    '<div class="foot"><button class="btn" id="g-no">Fermer</button><button class="btn pri" id="g-ok">✓ Fait</button></div>');
+    '<div class="foot"><button class="btn" id="g-no">Fermer</button><button class="btn pri" id="g-ok">Vérifier</button></div>');
   $('x').onclick = $('g-no').onclick = close;
+  let pret = null;  // 1er clic : récapitulatif ; 2e clic : envoi
+  const annuler = () => { pret = null; $('g-recap').style.display = 'none'; $('g-ok').textContent = 'Vérifier'; };
+  ['g-prod', 'g-qte', 'g-unite', 'g-bouillie'].forEach(id => { $(id).oninput = $(id).onchange = annuler; });
   $('g-ok').onclick = () => {
+    if (pret) {
+      close();
+      enfiler('changerStatut', { id: t.id, statut: 'fait', appli: pret });
+      return toast('Marqué comme fait — sera inscrit au registre');
+    }
     const nb = id => { const n = parseFloat($(id).value.replace(',', '.').replace(/\s/g, '')); return isFinite(n) && n > 0 ? n : 0; };
     const appli = { produit: $('g-prod').value.trim(), quantite: nb('g-qte'), unite: $('g-unite').value, bouillie: nb('g-bouillie') };
+    $('g-err').textContent = '';
     if (!appli.produit) return $('g-err').textContent = 'Indiquez le produit.';
     if (!appli.quantite) return $('g-err').textContent = 'Indiquez la quantité de produit.';
+    if (!appli.unite) return $('g-err').textContent = 'Choisissez l’unité (ml, L, g ou kg).';
     if (!appli.bouillie) return $('g-err').textContent = 'Indiquez le volume de bouillie.';
-    close();
-    enfiler('changerStatut', { id: t.id, statut: 'fait', appli });
-    toast('Marqué comme fait — sera inscrit au registre');
+    pret = appli;
+    $('g-recap').innerHTML = '<b>À inscrire au registre (' + esc(t.salle) + ', ' + esc(t.date || '') + ') :</b><br>' +
+      esc(appli.produit) + ' — ' + nombreFr(appli.quantite) + ' ' + esc(appli.unite) + ' dans ' + nombreFr(appli.bouillie) + ' L de bouillie';
+    $('g-recap').style.display = '';
+    $('g-ok').textContent = '✓ Confirmer';
   };
 }
 
