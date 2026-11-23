@@ -967,50 +967,94 @@ function visLire() {
 /* ---------- Foliaire fait : produit, quantité, bouillie (inscrits au registre GACP par la synchro) ---------- */
 const UNITES_FOLIAIRE = ['ml', 'L', 'g', 'kg'];
 const lireAppli = t => { try { return t && t.appli ? JSON.parse(t.appli) : null; } catch (e) { return null; } };
-const nombreFr = n => String(n).replace('.', ',');
+const produitsAppli = a => !a ? [] : Array.isArray(a.produits) ? a.produits.filter(p => p && p.produit) : a.produit ? [{ produit: a.produit, quantite: a.quantite, unite: a.unite }] : [];
+const nombreFr = n => String(Math.round(n * 1000) / 1000).replace('.', ',');
+const normTxt = x => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 function texteAppli(t) {
   const a = lireAppli(t); if (!a) return '';
-  return [a.produit + (a.quantite ? ' ' + nombreFr(a.quantite) + (a.unite ? ' ' + a.unite : '') : ''), a.bouillie ? 'bouillie ' + nombreFr(a.bouillie) + ' L' : ''].filter(Boolean).join(' · ');
+  const prods = produitsAppli(a).map(p => p.produit + (p.quantite ? ' ' + nombreFr(p.quantite) + (p.unite ? ' ' + p.unite : '') : '')).join(' + ');
+  return [prods, a.bouillie ? 'bouillie ' + nombreFr(a.bouillie) + ' L' : ''].filter(Boolean).join(' · ');
 }
+/* Foliaire fait : un ou plusieurs produits de la liste (onglet Produits), quantité calculée selon la dose par litre et la bouillie.
+   Seules les quantités du même produit dans la même salle sont proposées (jamais celles d'un autre produit). */
 function formFoliaire(t) {
-  // Produit : celui du titre « Foliaire — Produit » ; sinon le titre lui-même (ex. « Bioceres »), jamais celui d'un autre foliaire
-  const titre = (t.titre || '').trim();
-  const produit = titre.includes(' — ') ? titre.split(' — ').slice(1).join(' — ').trim()
-    : (titre && titre.toLowerCase() !== 'foliaire' ? titre : '');
-  // Quantités proposées : seulement la dernière application du MÊME produit (même salle d'abord), sinon champs vides
-  const precedentes = produit ? S.d.taches.filter(x => x.id !== t.id && x.type === 'Foliaire' && lireAppli(x) &&
-    (lireAppli(x).produit || '').toLowerCase() === produit.toLowerCase()).sort((a, b) => (a.faitLe || '') < (b.faitLe || '') ? 1 : -1) : [];
-  const der = lireAppli(precedentes.find(x => x.salle === t.salle) || precedentes[0]) || {};
+  const cat = (S.d && S.d.produitsFoliaires) || [];
+  const duCat = nom => cat.find(p => normTxt(p.nom) === normTxt(nom));
+  const titre = t.titre || '';
+  let depart = cat.filter(p => normTxt(titre).includes(normTxt(p.nom))).map(p => p.nom);
+  // Sinon le produit du titre « Foliaire — X », ou le titre seul (ex. « Bioceres »), jamais celui d'un autre foliaire
+  if (!depart.length && titre.includes(' — ')) depart = [titre.split(' — ').slice(1).join(' — ').trim()];
+  if (!depart.length && titre.trim() && normTxt(titre) !== 'foliaire') depart = [titre.trim()];
+  if (!depart.length) depart = [''];
+  // Dernière application du même produit dans la même salle
+  const passees = S.d.taches.filter(x => x.id !== t.id && x.type === 'Foliaire' && x.salle === t.salle && lireAppli(x))
+    .sort((a, b) => (a.faitLe || '') < (b.faitLe || '') ? 1 : -1);
+  const dernier = nom => { for (const x of passees) { const p = produitsAppli(lireAppli(x)).find(q => normTxt(q.produit) === normTxt(nom)); if (p) return { p, b: lireAppli(x).bouillie }; } return null; };
+  const der0 = depart[0] && dernier(depart[0]);
+  const bouillie0 = der0 && der0.b ? nombreFr(der0.b) : '';
+  const ligne = nom => {
+    const c = duCat(nom), d = nom && dernier(nom);
+    const unite = (c && c.unite) || (d && d.p.unite) || '';  // unité obligatoire : pas de « ml » par défaut pour une poudre
+    return '<div class="inline f-ligne" style="margin-bottom:6px">' +
+      '<input type="text" class="f-prod" list="f-cat" maxlength="60" placeholder="Produit" style="flex:2" value="' + esc(nom) + '">' +
+      '<input type="text" inputmode="decimal" class="f-qte" placeholder="' + (c && c.dose ? nombreFr(c.dose) + ' ' + esc(c.unite || '') + '/L' : 'Qté') + '" style="flex:1;min-width:0">' +
+      '<select class="f-unite" style="width:auto"><option value="">unité</option>' + opts(UNITES_FOLIAIRE, unite) + '</select>' +
+      '<button class="icon-btn f-del" title="Retirer">✕</button></div>';
+  };
   open('<h3>Foliaire fait<button class="icon-btn" id="x">✕</button></h3>' +
-    '<div>' + esc(t.salle) + ' — ' + esc(t.titre || t.type) + '</div>' +
-    '<label>Produit</label><input type="text" id="g-prod" maxlength="60" value="' + esc(produit) + '">' +
-    '<label>Quantité de produit</label><div class="inline"><input type="text" inputmode="decimal" id="g-qte" style="flex:1" value="' + (der.quantite ? nombreFr(der.quantite) : '') + '">' +
-    '<select id="g-unite" style="width:auto"><option value="">unité</option>' + opts(UNITES_FOLIAIRE, der.unite || '') + '</select></div>' +
-    '<label>Volume de bouillie (L)</label><input type="text" inputmode="decimal" id="g-bouillie" value="' + (der.bouillie ? nombreFr(der.bouillie) : '') + '">' +
-    '<div class="meta">' + (der.quantite ? 'Valeurs proposées : dernière application de ce produit. Vérifiez-les.' : 'Inscrivez ce qui a réellement été appliqué.') + '</div>' +
+    '<div>' + esc(t.salle) + ' — ' + esc(titre || t.type) + '</div>' +
+    '<label>Volume de bouillie (L)</label><input type="text" inputmode="decimal" id="g-bouillie" value="' + bouillie0 + '">' +
+    '<label>Produits</label><div id="f-lignes">' + depart.map(ligne).join('') + '</div>' +
+    '<datalist id="f-cat">' + cat.map(p => '<option value="' + esc(p.nom) + '">').join('') + '</datalist>' +
+    '<button class="btn" id="f-plus" type="button">+ Ajouter un produit</button>' +
+    '<div class="meta">Quantité calculée selon la dose par litre de l’onglet Produits (modifiable). Inscrit au registre GACP : Foliaire – produit, volume de bouillie et fait par.</div>' +
     '<div class="meta" id="g-recap" style="display:none"></div>' +
     '<div class="err" id="g-err"></div>' +
     '<div class="foot"><button class="btn" id="g-no">Fermer</button><button class="btn pri" id="g-ok">Vérifier</button></div>');
-  $('x').onclick = $('g-no').onclick = close;
-  let pret = null;  // 1er clic : récapitulatif ; 2e clic : envoi
+  // 1er clic : récapitulatif de ce qui sera inscrit au registre ; 2e clic : envoi. Toute modification annule le récapitulatif.
+  let pret = null;
   const annuler = () => { pret = null; $('g-recap').style.display = 'none'; $('g-ok').textContent = 'Vérifier'; };
-  ['g-prod', 'g-qte', 'g-unite', 'g-bouillie'].forEach(id => { $(id).oninput = $(id).onchange = annuler; });
+  const nb = v => { const n = parseFloat(String(v || '').replace(',', '.').replace(/\s/g, '')); return isFinite(n) && n > 0 ? n : 0; };
+  // Quantité = dose × bouillie, tant qu'elle n'a pas été tapée à la main ; sinon la dernière quantité du même produit dans la salle
+  const calculer = () => {
+    const b = nb($('g-bouillie').value);
+    document.querySelectorAll('#f-lignes .f-ligne').forEach(l => {
+      const q = l.querySelector('.f-qte'); if (q.dataset.main) return;
+      const nom = l.querySelector('.f-prod').value, c = duCat(nom), d = dernier(nom);
+      if (c && c.unite) l.querySelector('.f-unite').value = c.unite;
+      q.value = c && c.dose && b ? nombreFr(Math.round(c.dose * b * 100) / 100) : (d && d.p.quantite ? nombreFr(d.p.quantite) : '');
+      if (!(c && c.dose && b) && d && d.p.unite) l.querySelector('.f-unite').value = d.p.unite;
+    });
+  };
+  const brancher = l => {
+    l.querySelector('.f-qte').oninput = e => { e.target.dataset.main = e.target.value ? '1' : ''; };
+    l.querySelector('.f-prod').onchange = () => { l.querySelector('.f-qte').dataset.main = ''; calculer(); };
+    l.querySelector('.f-del').onclick = () => { if (document.querySelectorAll('#f-lignes .f-ligne').length > 1) l.remove(); else { l.querySelector('.f-prod').value = ''; l.querySelector('.f-qte').value = ''; } };
+  };
+  document.querySelectorAll('#f-lignes .f-ligne').forEach(brancher);
+  $('g-bouillie').oninput = calculer;
+  ['input', 'change', 'click'].forEach(ev => $('f-lignes').addEventListener(ev, e => { if (ev !== 'click' || e.target.closest('.f-del')) annuler(); }));
+  $('g-bouillie').addEventListener('input', annuler);
+  $('f-plus').onclick = () => { annuler(); $('f-lignes').insertAdjacentHTML('beforeend', ligne('')); brancher($('f-lignes').lastElementChild); $('f-lignes').lastElementChild.querySelector('.f-prod').focus(); };
+  calculer();
+  $('x').onclick = $('g-no').onclick = close;
   $('g-ok').onclick = () => {
     if (pret) {
       close();
       enfiler('changerStatut', { id: t.id, statut: 'fait', appli: pret });
       return toast('Marqué comme fait — sera inscrit au registre');
     }
-    const nb = id => { const n = parseFloat($(id).value.replace(',', '.').replace(/\s/g, '')); return isFinite(n) && n > 0 ? n : 0; };
-    const appli = { produit: $('g-prod').value.trim(), quantite: nb('g-qte'), unite: $('g-unite').value, bouillie: nb('g-bouillie') };
     $('g-err').textContent = '';
-    if (!appli.produit) return $('g-err').textContent = 'Indiquez le produit.';
-    if (!appli.quantite) return $('g-err').textContent = 'Indiquez la quantité de produit.';
-    if (!appli.unite) return $('g-err').textContent = 'Choisissez l’unité (ml, L, g ou kg).';
+    const produits = [...document.querySelectorAll('#f-lignes .f-ligne')].map(l => ({ produit: l.querySelector('.f-prod').value.trim(),
+      quantite: nb(l.querySelector('.f-qte').value), unite: l.querySelector('.f-unite').value })).filter(p => p.produit || p.quantite);
+    const appli = { produits, bouillie: nb($('g-bouillie').value) };
     if (!appli.bouillie) return $('g-err').textContent = 'Indiquez le volume de bouillie.';
+    if (!produits.length || produits.some(p => !p.produit)) return $('g-err').textContent = 'Indiquez le produit.';
+    if (produits.some(p => !p.quantite)) return $('g-err').textContent = 'Indiquez la quantité de chaque produit.';
+    if (produits.some(p => !p.unite)) return $('g-err').textContent = 'Choisissez l’unité de chaque produit (ml, L, g ou kg).';
     pret = appli;
     $('g-recap').innerHTML = '<b>À inscrire au registre (' + esc(t.salle) + ', ' + esc(t.date || '') + ') :</b><br>' +
-      esc(appli.produit) + ' — ' + nombreFr(appli.quantite) + ' ' + esc(appli.unite) + ' dans ' + nombreFr(appli.bouillie) + ' L de bouillie';
+      produits.map(p => esc(p.produit) + ' — ' + nombreFr(p.quantite) + ' ' + esc(p.unite)).join('<br>') + '<br>dans ' + nombreFr(appli.bouillie) + ' L de bouillie';
     $('g-recap').style.display = '';
     $('g-ok').textContent = '✓ Confirmer';
   };
