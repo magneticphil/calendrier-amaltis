@@ -233,7 +233,9 @@ function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e)
 function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2200); }
 let busyN = 0, mutationPending = false, dataRevision = 0, refreshPending = false;
 const MUTATIONS = new Set(['enregistrerTache','changerStatut','retablirTache','enregistrerCycle','annulerCycle','enregistrerAcces','synchroniser']);
-function busy(on) { busyN = Math.max(0,busyN+(on?1:-1)); $('busy').style.width = busyN > 0 ? '70%' : '0'; }
+// Barre verte du haut : seulement pour le bouton « Recharger » ; les envois et rafraîchissements en arrière-plan restent discrets
+function busy(on) { busyN = Math.max(0,busyN+(on?1:-1)); }
+function barre(on) { $('busy').style.width = on ? '70%' : '0'; }
 function actionFeedback(message, ms) {
   const box=$('action-feedback'); box.textContent=message; box.hidden=!message;
   clearTimeout(box._h); if (message && ms) box._h = setTimeout(() => actionFeedback(''), ms);
@@ -499,9 +501,10 @@ let dernierRefresh = 0;
 async function refresh(quiet) {
   if(mutationPending||refreshPending||!$('ov').classList.contains('hidden')) return false;
   refreshPending=true; const revision=dataRevision, auth=S.auth;
+  if(!quiet) barre(true);
   try { const d=await run('charger',auth); if(revision===dataRevision&&auth===S.auth&&!mutationPending&&$('ov').classList.contains('hidden')){apply(d);dernierRefresh=Date.now();if(!quiet)toast('À jour');return true;} return false; }
   catch(e){if(/code invalide/i.test(errMsg(e))){logout();return true;} if(revision===dataRevision&&!quiet)toast(errMsg(e)); return false;}
-  finally{refreshPending=false;}
+  finally{refreshPending=false; if(!quiet) barre(false);}
 }
 const CACHE_V = 1;
 function cacheKey() { return 'cal_data_' + (S.auth && S.auth.nom ? String(S.auth.nom).toLowerCase() : ''); }
