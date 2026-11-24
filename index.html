@@ -794,11 +794,15 @@ function formTache(t, date) {
     '<label>Détails / doses</label><textarea id="f-det" maxlength="1000" placeholder="Produits, doses, consignes…">' + esc(edit ? t.details : '') + '</textarea>' +
     visBloc(edit ? t.visible : '') +
     (edit ? '' : '<label class="check" style="margin-top:16px"><input type="checkbox" id="f-rep"> Répéter</label>' +
-      '<div id="f-repbox" class="hidden"><div class="inline" style="margin-top:8px">tous les <input type="number" id="f-pas" min="1" max="120" value="7"> jours, <input type="number" id="f-fois" min="2" max="52" value="4"> fois</div></div>') +
+      '<div id="f-repbox" class="hidden"><div class="inline" style="margin-top:8px">tous les <input type="number" id="f-pas" min="1" max="120" value="7"> jours, <input type="number" id="f-fois" min="2" max="52" value="4"> fois</div>' +
+      '<label class="check" style="margin-top:8px"><input type="checkbox" id="f-sansfin"> Sans fin (prolongée automatiquement)</label></div>') +
     '<div class="err" id="f-err"></div>' +
     '<div class="foot"><button class="btn" id="f-no">Fermer</button><button class="btn pri" id="f-ok">Enregistrer</button></div>');
   $('x').onclick = $('f-no').onclick = close;
-  if (!edit) $('f-rep').onchange = e => $('f-repbox').classList.toggle('hidden', !e.target.checked);
+  if (!edit) {
+    $('f-rep').onchange = e => $('f-repbox').classList.toggle('hidden', !e.target.checked);
+    $('f-sansfin').onchange = e => { $('f-fois').disabled = e.target.checked; };
+  }
   visBind();
   const vis0 = JSON.stringify(visLire().slice().sort());
   $('f-ok').onclick = () => {
@@ -812,7 +816,11 @@ function formTache(t, date) {
     else {
       p.salles = [...document.querySelectorAll('input[name=fs]:checked')].map(i => i.value);
       if (!p.salles.length) return $('f-err').textContent = 'Choisissez au moins une salle.';
-      if ($('f-rep').checked) { p.tousLes = $('f-pas').value; p.fois = $('f-fois').value; }
+      if ($('f-rep').checked) {
+        p.tousLes = $('f-pas').value; p.fois = $('f-fois').value;
+        // Sans fin : les 6 prochains mois tout de suite, la synchro prolonge ensuite
+        if ($('f-sansfin').checked) { p.sansFin = true; p.fois = Math.max(2, Math.min(52, Math.ceil(183 / Math.max(1, parseInt(p.tousLes, 10) || 7)))); }
+      }
     }
     if (!p.date) return $('f-err').textContent = 'Indiquez une date.';
     if (!S.d.types.includes(p.type)) return $('f-err').textContent = 'Type de tâche inconnu.';
