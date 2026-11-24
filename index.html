@@ -337,10 +337,12 @@ function appliquerAction(taches, it) {
     const fois = a.fois ? Math.max(1, Math.min(52, parseInt(a.fois, 10) || 1)) : 1;
     const pas = Math.max(1, Math.min(120, parseInt(a.tousLes, 10) || 7));
     let n = 0;
+    const faite = a.fait === true && fois === 1 && a.date <= T;  // ménage / dépistage : créé déjà fait
     a.salles.forEach((sl, k) => { for (let i = 0; i < fois; i++) taches.push({
       id: idOp(it.id, n++), serie: fois > 1 ? serieOp(it.id, k) : '', salle: sl, date: addD(a.date, i * pas), type: a.type,
-      titre: String(a.titre || '').trim(), details: String(a.details || '').trim(), statut: 'à faire', creePar: moi, faitPar: '', faitLe: '',
-      modifPar: '', modifLe: '', motif: '', auto: '', visible: (a.visible || []).join(', '), prevue: '', registre: '', regle: '', appli: '' }); });
+      titre: String(a.titre || '').trim(), details: String(a.details || '').trim(), statut: faite ? 'fait' : 'à faire', creePar: moi,
+      faitPar: faite ? moi : '', faitLe: faite ? it.at : '',
+      modifPar: faite ? moi : '', modifLe: faite ? it.at : '', motif: '', auto: '', visible: (a.visible || []).join(', '), prevue: '', registre: '', regle: '', appli: '' }); });
   }
 }
 /** Les actions encore en file, par-dessus les données reçues du serveur. */
@@ -847,8 +849,8 @@ function formMenage(jour) {
     const titre = ($('m-titre').value.trim() || 'Ménage') + (prod ? ' — ' + prod : '');
     store('cal_menage_produit', prod || MENAGE_PRODUIT);
     close();
-    const it = enfiler('enregistrerTache', { salles, date, type: 'Nettoyage', titre, details: [prod ? 'Produit : ' + prod : '', rem].filter(Boolean).join(' · '), visible: [] });
-    salles.forEach((sl, i) => enfiler('changerStatut', { id: idOp(it.id, i), statut: 'fait' }));
+    // Un seul envoi : les tâches sont créées déjà faites pour toutes les salles cochées
+    enfiler('enregistrerTache', { salles, date, type: 'Nettoyage', titre, details: [prod ? 'Produit : ' + prod : '', rem].filter(Boolean).join(' · '), visible: [], fait: true });
     toast('Ménage inscrit — ' + salles.length + ' salle' + (salles.length > 1 ? 's' : ''));
   };
 }
@@ -890,8 +892,7 @@ function formDepistage(jour) {
     const rem = $('d-det').value.trim();
     const titre = 'Dépistage — ' + res + (quoi.length ? ' : ' + quoi.join(', ') : '');
     close();
-    const it = enfiler('enregistrerTache', { salles, date, type: 'Lutte intégrée', titre, details: rem ? 'Remarque : ' + rem : '', visible: [] });
-    salles.forEach((sl, i) => enfiler('changerStatut', { id: idOp(it.id, i), statut: 'fait' }));
+    enfiler('enregistrerTache', { salles, date, type: 'Lutte intégrée', titre, details: rem ? 'Remarque : ' + rem : '', visible: [], fait: true });
     toast('Dépistage inscrit — ' + salles.length + ' salle' + (salles.length > 1 ? 's' : ''));
   };
 }
