@@ -194,6 +194,7 @@
     <div class="chips" id="filtre"></div>
     <div id="action-feedback" role="status" aria-live="polite" class="meta" style="padding:0 16px 8px" hidden></div>
     <div id="file-attente" role="status" class="meta late" style="padding:0 16px 8px" hidden></div>
+    <div id="fraicheur" role="status" class="meta late" style="padding:0 16px 8px" hidden></div>
   </header>
   <main>
     <section id="v-cal"></section>
@@ -501,18 +502,56 @@ async function rafraichirDepart() {
 }
 let dernierRefresh = 0;
 async function refresh(quiet) {
-  if(mutationPending||refreshPending||!$('ov').classList.contains('hidden')) return false;
+  if(mutationPending||refreshPending) return false;
   refreshPending=true; const revision=dataRevision, auth=S.auth;
   if(!quiet) barre(true);
-  try { const d=await run('charger',auth); if(revision===dataRevision&&auth===S.auth&&!mutationPending&&$('ov').classList.contains('hidden')){apply(d);dernierRefresh=Date.now();if(!quiet)toast('À jour');return true;} return false; }
+  try { const d=await run('charger',auth); if(revision===dataRevision&&auth===S.auth&&!mutationPending){
+      // Formulaire ouvert : la réponse est gardée et appliquée à sa fermeture (jamais perdue) ; la tâche ouverte est comparée
+      if(!$('ov').classList.contains('hidden')){refreshAttente={d,revision,auth};dernierRefresh=Date.now();signalerModif(d);return true;}
+      apply(d);dernierRefresh=Date.now();if(!quiet)toast('À jour');return true;} return false; }
   catch(e){if(/code invalide/i.test(errMsg(e))){logout();return true;} if(revision===dataRevision&&!quiet)toast(errMsg(e)); return false;}
-  finally{refreshPending=false; if(!quiet) barre(false);}
+  finally{refreshPending=false; if(!quiet) barre(false); if(refreshRelance){refreshRelance=false; setTimeout(()=>refresh(true),0);}}
 }
 const CACHE_V = 1;
 function cacheKey() { return 'cal_data_' + (S.auth && S.auth.nom ? String(S.auth.nom).toLowerCase() : ''); }
 let cacheT = null;
-function saveCache() { clearTimeout(cacheT); cacheT = setTimeout(() => { if (S.d && S.auth) store(cacheKey(), { v: CACHE_V, d: S.d }); }, 300); }
-function readCache() { const c = load(cacheKey()); return c && c.v === CACHE_V && c.d && c.d.taches ? c.d : null; }
+function saveCache() { clearTimeout(cacheT); cacheT = setTimeout(() => { if (S.d && S.auth) store(cacheKey(), { v: CACHE_V, d: S.d, t: S.majLe || 0 }); }, 300); }
+function readCache() { const c = load(cacheKey()); if (!(c && c.v === CACHE_V && c.d && c.d.taches)) return null; S.majLe = c.t || 0; return c.d; }
+// Fraîcheur : données de plus de 3 minutes (téléphone qui n'a pas encore reçu la mise à jour) → heure affichée
+const PERIME_MS = 180000;
+function perime() { return !!S.d && (!S.majLe || Date.now() - S.majLe > PERIME_MS); }
+function texteFraicheur() {
+  if (!S.majLe) return 'Données gardées sur le téléphone — mise à jour en cours…';
+  const d = new Date(S.majLe), auj = new Date().toDateString() === d.toDateString();
+  const h = d.getHours() + ' h ' + String(d.getMinutes()).padStart(2, '0');
+  return 'Données de ' + (auj ? '' : d.toLocaleDateString('fr-CA', { day: 'numeric', month: 'short' }) + ' ') + h + ' — mise à jour en cours…';
+}
+function majFraicheur() {
+  const el = $('fraicheur'); if (!el) return;
+  const p = perime(); el.hidden = !p; if (p) el.textContent = texteFraicheur();
+  const n = $('ov-frais'); if (n && !p) n.remove();
+}
+let refreshAttente = null, ouvertId = null, refreshRelance = false;
+function appliquerAttente() {
+  const a = refreshAttente; refreshAttente = null;
+  if (a && a.revision === dataRevision && a.auth === S.auth && !mutationPending) apply(a.d);
+}
+// Une mise à jour arrivée pendant qu'une tâche est ouverte : avertir si cette tâche a changé
+function signalerModif(d) {
+  const nf = $('ov-frais'); if (nf) nf.remove();
+  if (!S.ouvert || fileLire().some(it => it.a && it.a.id === S.ouvert)) return;
+  const o = S.d.taches.find(x => x.id === S.ouvert), n = d.taches.find(x => x.id === S.ouvert);
+  if (!o) return;
+  let msg = '';
+  if (!n || n.statut === 'annulée') msg = 'Cette tâche vient d’être annulée ou retirée. Fermez le formulaire.';
+  else if (['titre', 'details', 'date', 'salle', 'statut'].some(k => String(o[k] || '') !== String(n[k] || '')))
+    msg = 'Cette tâche vient d’être modifiée : « ' + n.titre + ' » (' + n.date + ', ' + n.salle + '). Fermez et rouvrez-la avant de continuer.';
+  if (!msg) return;
+  let el = $('ov-modif');
+  if (!el) { el = document.createElement('div'); el.id = 'ov-modif'; el.className = 'err'; el.style.margin = '0 0 12px';
+    const h = $('panel').querySelector('h3'); h ? h.after(el) : $('panel').prepend(el); }
+  el.textContent = msg;
+}
 function apply(d) {
   const oldToday = S.d && S.d.today;
   if(d.delta){
@@ -526,12 +565,12 @@ function apply(d) {
     const ids = new Set(d.taches.map(t => t.id));
     anciens.forEach(t => { if (!ids.has(t.id)) d.taches.push(t); });
     d.charges = (S.d && S.d.charges) || {};
-    S.d = d;
+    S.d = d; S.majLe = Date.now();
   }
   // Nouvelle journée depuis l'ouverture (données en cache) : la sélection suit « aujourd'hui »
   if (oldToday && S.d.today !== oldToday && S.jour === oldToday) { S.jour = S.d.today; S.mois = S.d.today.slice(0, 7); }
   superposerFile();
-  cycleIndex=null; saveCache(); render();
+  cycleIndex=null; saveCache(); render(); majFraicheur();
 }
 
 /* ---------- Connexion ---------- */
@@ -542,7 +581,7 @@ async function initLogin() {
     // Ouverture instantanée : dernières données connues affichées tout de suite, puis mise à jour en arrière-plan
     const cache = readCache();
     if (cache) { start({ nom: cache.moi }, cache); rafraichirDepart(); return; }
-    try { const d = await run('charger', saved); return start({nom:d.moi},d); } catch (e) { store('cal_auth', null); }
+    try { const d = await run('charger', saved); S.majLe = Date.now(); return start({nom:d.moi},d); } catch (e) { store('cal_auth', null); }
   }
   try {
     const noms = await run('listerNoms');
@@ -554,7 +593,7 @@ $('l-go').onclick = async () => {
   if($('l-go').disabled)return; $('l-go').disabled=true;
   const a = { nom: $('l-nom').value, code: $('l-code').value.trim() };
   $('l-err').textContent = '';
-  try { const d = await run('charger', a); S.auth = a; store('cal_auth', a); store('cal_dernier_nom', a.nom); start({nom:d.moi},d); }
+  try { const d = await run('charger', a); S.majLe = Date.now(); S.auth = a; store('cal_auth', a); store('cal_dernier_nom', a.nom); start({nom:d.moi},d); }
   catch (e) { $('l-err').textContent = errMsg(e); }
   finally { $('l-go').disabled=false; }
 };
@@ -565,7 +604,7 @@ async function start(u, initial) {
   S.d = initial || await run('charger', S.auth);
   S.mois = S.d.today.slice(0, 7); S.jour = S.d.today;
   const sf = load('cal_salle'); if (sf && (sf === 'Toutes' || S.d.salles.includes(sf))) S.salle = sf;
-  superposerFile(); saveCache(); render();
+  superposerFile(); saveCache(); render(); majFraicheur();
   planifierEnvoi(300);
 }
 function logout() { store(cacheKey(), null); store('cal_auth', null); location.reload(); }
@@ -587,6 +626,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rafr
 window.addEventListener('pageshow', e => { if (e.persisted) rafraichirRetour(); });
 window.addEventListener('online', rafraichirRetour);
 setInterval(() => {
+  majFraicheur();
   if (document.hidden || !S.d || departEnCours || navigator.onLine === false) return;
   if (Date.now() - dernierRefresh >= REFRESH_AUTO_MS) refresh(true);
 }, 15000);
@@ -776,14 +816,25 @@ function bindCards(root) {
 }
 
 /* ---------- Panneau ---------- */
-function open(html) { if(mutationPending)return; $('panel').innerHTML = html; $('ov').classList.remove('hidden'); $('panel').scrollTop = 0; }
-function close() { if(mutationPending)return; $('ov').classList.add('hidden'); }
+function open(html) {
+  if(mutationPending)return; S.ouvert = ouvertId; ouvertId = null;
+  $('panel').innerHTML = html; $('ov').classList.remove('hidden'); $('panel').scrollTop = 0;
+  // Tâche ouverte sur des données anciennes : on le dit, et on vérifie tout de suite
+  if (S.ouvert && perime()) {
+    const el = document.createElement('div'); el.id = 'ov-frais'; el.className = 'meta late'; el.style.margin = '0 0 12px';
+    el.textContent = texteFraicheur().replace('mise à jour en cours…', 'vérification de la tâche en cours…');
+    const h = $('panel').querySelector('h3'); h ? h.after(el) : $('panel').prepend(el);
+    if (refreshPending) refreshRelance = true; else refresh(true);  // une mise à jour déjà partie a pu précéder la modification
+  }
+}
+function close() { if(mutationPending)return; $('ov').classList.add('hidden'); S.ouvert = null; appliquerAttente(); }
 $('ov').onclick = e => { if (e.target === $('ov')) close(); };
 const opts = (list, sel) => list.map(x => '<option' + (x === sel ? ' selected' : '') + '>' + esc(x) + '</option>').join('');
 
 function formTache(t, date) {
   const edit = !!t;
   const sal = edit ? t.salle : (S.salle !== 'Toutes' ? S.salle : null);
+  ouvertId = t && t.id || null;
   open('<h3>' + (edit ? 'Modifier la tâche' : 'Nouvelle tâche') + '<button class="icon-btn" id="x">✕</button></h3>' +
     (edit ? '<label>Salle</label><select id="f-salle">' + opts(S.d.salles, t.salle) + '</select>'
           : '<label>Salle(s)</label><div class="pills">' + S.d.salles.map(s =>
@@ -1010,6 +1061,7 @@ function formFoliaire(t) {
       '<select class="f-unite" style="width:auto"><option value="">unité</option>' + opts(UNITES_FOLIAIRE, unite) + '</select>' +
       '<button class="icon-btn f-del" title="Retirer">✕</button></div>';
   };
+  ouvertId = t && t.id || null;
   open('<h3>Foliaire fait<button class="icon-btn" id="x">✕</button></h3>' +
     '<div>' + esc(t.salle) + ' — ' + esc(titre || t.type) + '</div>' +
     '<label>Volume de bouillie (L)</label><input type="text" inputmode="decimal" id="g-bouillie" value="' + bouillie0 + '">' +
@@ -1168,6 +1220,7 @@ function formMessage() {
 
 function formAnnulTache(t) {
   const suite = t.serie ? S.d.taches.filter(x => x.serie === t.serie && x.salle === t.salle && x.id !== t.id && x.date > t.date && x.statut === 'à faire').length : 0;
+  ouvertId = t && t.id || null;
   open('<h3>Annuler la tâche<button class="icon-btn" id="x">✕</button></h3>' +
     '<div>' + esc(t.titre || t.type) + ' — ' + esc(t.salle) + ', ' + longDate(t.date) + '</div>' +
     '<label>Motif (obligatoire)</label><textarea id="a-motif" maxlength="300" placeholder="ex. reportée, non nécessaire, erreur de saisie"></textarea>' +
